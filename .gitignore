@@ -5,6 +5,11 @@ __pypackages__/
 .venv/
 venv/
 
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
 # Build outputs
 .next/
 dist/
