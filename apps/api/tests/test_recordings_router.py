@@ -139,6 +139,83 @@ class TestDeleteRecording:
         assert response.status_code == 404
 
 
+class TestBrowserRecordingSource:
+    @pytest.fixture
+    async def realtime_meeting(self, client: AsyncClient) -> tuple[str, str]:
+        """Create a realtime mode meeting."""
+        team_resp = await client.post("/api/v1/teams", json={"name": "실시간팀"})
+        team_id = team_resp.json()["id"]
+        meeting_resp = await client.post(
+            "/api/v1/meetings",
+            json={
+                "team_id": team_id,
+                "meeting_date": "2024-01-15",
+                "title": "실시간 회의",
+                "meeting_mode": "realtime",
+            },
+        )
+        return team_id, meeting_resp.json()["id"]
+
+    @pytest.mark.asyncio
+    async def test_upload_with_browser_source(self, client: AsyncClient, realtime_meeting, tmp_path):
+        _, meeting_id = realtime_meeting
+
+        with patch("src.routers.recordings.get_upload_dir", return_value=tmp_path):
+            response = await client.post(
+                f"/api/v1/recordings/meetings/{meeting_id}/recording",
+                files={"file": ("recording.webm", b"browser audio data", "audio/webm")},
+                data={"source": "browser"},
+            )
+            assert response.status_code == 201
+            data = response.json()
+            assert data["source"] == "browser"
+            assert data["original_filename"] == "recording.webm"
+
+    @pytest.mark.asyncio
+    async def test_upload_with_upload_source_default(self, client: AsyncClient, team_and_meeting, tmp_path):
+        _, meeting_id = team_and_meeting
+
+        with patch("src.routers.recordings.get_upload_dir", return_value=tmp_path):
+            response = await client.post(
+                f"/api/v1/recordings/meetings/{meeting_id}/recording",
+                files={"file": ("test.mp3", b"audio content", "audio/mpeg")},
+            )
+            assert response.status_code == 201
+            data = response.json()
+            assert data["source"] == "upload"
+
+    @pytest.mark.asyncio
+    async def test_upload_with_invalid_source(self, client: AsyncClient, team_and_meeting, tmp_path):
+        _, meeting_id = team_and_meeting
+
+        with patch("src.routers.recordings.get_upload_dir", return_value=tmp_path):
+            response = await client.post(
+                f"/api/v1/recordings/meetings/{meeting_id}/recording",
+                files={"file": ("test.mp3", b"audio content", "audio/mpeg")},
+                data={"source": "invalid_source"},
+            )
+            assert response.status_code == 400
+            assert "Invalid source" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_browser_source_does_not_change_meeting_status(
+        self, client: AsyncClient, realtime_meeting, tmp_path
+    ):
+        """Browser recording upload should not override meeting status."""
+        _, meeting_id = realtime_meeting
+
+        with patch("src.routers.recordings.get_upload_dir", return_value=tmp_path):
+            await client.post(
+                f"/api/v1/recordings/meetings/{meeting_id}/recording",
+                files={"file": ("recording.webm", b"browser audio", "audio/webm")},
+                data={"source": "browser"},
+            )
+
+        # Check meeting status - should still be 'created' (not 'recording_uploaded')
+        meeting_resp = await client.get(f"/api/v1/meetings/{meeting_id}")
+        assert meeting_resp.json()["status"] == "created"
+
+
 class TestHelperFunctions:
     def test_generate_stored_filename(self):
         from uuid import UUID

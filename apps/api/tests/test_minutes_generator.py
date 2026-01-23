@@ -6,6 +6,7 @@ import pytest
 
 from src.services.minutes_generator import (
     PROMPT_VERSION,
+    CorrectionItem,
     MinutesGenerationError,
     MinutesGenerationResult,
     MinutesGeneratorService,
@@ -302,10 +303,90 @@ not valid json
         assert "```json:corrections" not in result.content_markdown
 
 
-class TestEnhanceWithHighlights:
-    @pytest.mark.asyncio
-    async def test_p1_lite_returns_unchanged(self, minutes_service):
-        """P1-lite: should return original minutes unchanged."""
-        original = "# 회의록\n\n내용"
-        result = await minutes_service.enhance_with_highlights(original, "transcript text")
-        assert result == original
+class TestValidateCorrections:
+    def test_validates_correct_position(self, minutes_service):
+        """Should keep corrections with correct positions."""
+        markdown = "# 제목\nSDK 관련 작업 진행"
+        corrections = [
+            CorrectionItem(
+                original="에스디케이",
+                corrected="SDK",
+                category="terminology",
+                paragraph_index=1,
+                start_offset=0,
+                end_offset=3,
+            )
+        ]
+        result = minutes_service.validate_corrections(markdown, corrections)
+        assert len(result) == 1
+        assert result[0].paragraph_index == 1
+        assert result[0].start_offset == 0
+        assert result[0].end_offset == 3
+
+    def test_fixes_incorrect_position(self, minutes_service):
+        """Should fix corrections with wrong positions."""
+        markdown = "# 제목\nSDK 관련 작업 진행"
+        corrections = [
+            CorrectionItem(
+                original="에스디케이",
+                corrected="SDK",
+                category="terminology",
+                paragraph_index=0,  # wrong paragraph
+                start_offset=0,
+                end_offset=3,
+            )
+        ]
+        result = minutes_service.validate_corrections(markdown, corrections)
+        assert len(result) == 1
+        assert result[0].paragraph_index == 1  # fixed
+        assert result[0].start_offset == 0
+        assert result[0].end_offset == 3
+
+    def test_finds_position_when_missing(self, minutes_service):
+        """Should find positions when not provided."""
+        markdown = "# 제목\nSDK 관련 작업 진행"
+        corrections = [
+            CorrectionItem(
+                original="에스디케이",
+                corrected="SDK",
+                category="terminology",
+            )
+        ]
+        result = minutes_service.validate_corrections(markdown, corrections)
+        assert len(result) == 1
+        assert result[0].paragraph_index == 1
+        assert result[0].start_offset == 0
+        assert result[0].end_offset == 3
+
+    def test_keeps_correction_without_match(self, minutes_service):
+        """Should keep corrections even if text not found in markdown."""
+        markdown = "# 제목\n다른 내용"
+        corrections = [
+            CorrectionItem(
+                original="에스디케이",
+                corrected="SDK",
+                category="terminology",
+                paragraph_index=1,
+                start_offset=0,
+                end_offset=3,
+            )
+        ]
+        result = minutes_service.validate_corrections(markdown, corrections)
+        assert len(result) == 1
+        assert result[0].paragraph_index is None
+        assert result[0].start_offset is None
+        assert result[0].end_offset is None
+
+    def test_multiple_corrections(self, minutes_service):
+        """Should validate multiple corrections independently."""
+        markdown = "# 제목\nSDK 작업을 HWP 변환과 함께"
+        corrections = [
+            CorrectionItem(original="에스디케이", corrected="SDK", category="terminology"),
+            CorrectionItem(original="한글파일", corrected="HWP", category="terminology"),
+        ]
+        result = minutes_service.validate_corrections(markdown, corrections)
+        assert len(result) == 2
+        assert result[0].corrected == "SDK"
+        assert result[0].paragraph_index == 1
+        assert result[1].corrected == "HWP"
+        assert result[1].paragraph_index == 1

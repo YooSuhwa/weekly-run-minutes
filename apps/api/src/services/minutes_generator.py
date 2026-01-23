@@ -25,6 +25,9 @@ class CorrectionItem:
     original: str
     corrected: str
     category: str  # "terminology" | "formatting" | "grammar"
+    paragraph_index: int | None = None  # 0-indexed paragraph in the markdown
+    start_offset: int | None = None  # character offset within the paragraph
+    end_offset: int | None = None  # character end offset within the paragraph
 
 
 @dataclass
@@ -38,7 +41,7 @@ class MinutesGenerationResult:
 
 
 # Current prompt version for tracking
-PROMPT_VERSION = "1.1.0"
+PROMPT_VERSION = "2.0.0"
 
 # System prompt for meeting minutes generation
 SYSTEM_PROMPT = """당신은 주간회의 회의록을 작성하는 전문 비서입니다.
@@ -86,15 +89,21 @@ SYSTEM_PROMPT = """당신은 주간회의 회의록을 작성하는 전문 비�
 
 ```json:corrections
 [
-  {"original": "교정 전 텍스트", "corrected": "교정 후 텍스트", "category": "terminology"},
+  {"original": "교정 전 텍스트", "corrected": "교정 후 텍스트", "category": "terminology", "paragraph_index": 0, "start_offset": 10, "end_offset": 20},
   ...
 ]
 ```
 
-category 값:
-- "terminology": 용어 교정 (비표준 표현 → 공식 용어)
-- "formatting": 포맷팅 교정 (날짜, 숫자 형식 등)
-- "grammar": 문법 교정
+각 필드 설명:
+- "original": 녹취록에서 사용된 원본 표현
+- "corrected": 교정 후 회의록에 사용된 표현
+- "category": 교정 유형
+  - "terminology": 용어 교정 (비표준 표현 → 공식 용어)
+  - "formatting": 포맷팅 교정 (날짜, 숫자 형식 등)
+  - "grammar": 문법 교정
+- "paragraph_index": 교정된 텍스트가 위치한 단락 번호 (0부터, 빈 줄로 구분)
+- "start_offset": 해당 단락 내에서 교정된 텍스트의 시작 위치 (문자 인덱스)
+- "end_offset": 해당 단락 내에서 교정된 텍스트의 끝 위치 (문자 인덱스)
 
 교정이 없으면 빈 배열 `[]`을 사용합니다.
 """
@@ -180,6 +189,9 @@ class MinutesGeneratorService:
             # Parse corrections from the response
             content, corrections = self._parse_corrections(raw_content)
 
+            # Validate and fix correction positions
+            corrections = self.validate_corrections(content, corrections)
+
             logger.info(
                 "Minutes generated successfully",
                 model=self.model,
@@ -237,6 +249,9 @@ class MinutesGeneratorService:
                                     original=item["original"],
                                     corrected=item["corrected"],
                                     category=item.get("category", "terminology"),
+                                    paragraph_index=item.get("paragraph_index"),
+                                    start_offset=item.get("start_offset"),
+                                    end_offset=item.get("end_offset"),
                                 )
                             )
             except (json.JSONDecodeError, TypeError):
@@ -290,23 +305,62 @@ class MinutesGeneratorService:
             logger.exception("Failed to regenerate section")
             raise MinutesGenerationError(f"Failed to regenerate section: {e}")
 
-    async def enhance_with_highlights(
+    def validate_corrections(
         self,
         minutes_markdown: str,
-        _transcript_text: str,
-    ) -> str:
-        """Add AI-corrected highlights to the minutes.
+        corrections: list[CorrectionItem],
+    ) -> list[CorrectionItem]:
+        """Validate and fix correction positions against the actual markdown.
 
-        This is a P1-full feature that adds markers for AI-corrected content.
-        For P1-lite, this returns the original minutes unchanged.
+        Searches for corrected text in the markdown paragraphs and updates
+        position fields if they are missing or incorrect.
 
         Args:
-            minutes_markdown: Original minutes
-            transcript_text: Original transcript
+            minutes_markdown: Generated minutes markdown
+            corrections: List of corrections from GPT
 
         Returns:
-            Minutes with highlight markers (P1-full) or original (P1-lite)
+            Corrections with validated/fixed positions
         """
-        # P1-lite: Return as-is (no highlighting)
-        # TODO: Implement full highlighting in P1-full
-        return minutes_markdown
+        paragraphs = minutes_markdown.split("\n")
+        validated = []
+
+        for correction in corrections:
+            corrected_text = correction.corrected
+            found = False
+
+            # First try the reported position
+            if (
+                correction.paragraph_index is not None
+                and correction.start_offset is not None
+                and correction.end_offset is not None
+            ):
+                idx = correction.paragraph_index
+                if idx < len(paragraphs):
+                    para = paragraphs[idx]
+                    start = correction.start_offset
+                    end = correction.end_offset
+                    if end <= len(para) and para[start:end] == corrected_text:
+                        validated.append(correction)
+                        found = True
+
+            # Search for it if position was wrong or missing
+            if not found:
+                for i, para in enumerate(paragraphs):
+                    offset = para.find(corrected_text)
+                    if offset != -1:
+                        correction.paragraph_index = i
+                        correction.start_offset = offset
+                        correction.end_offset = offset + len(corrected_text)
+                        validated.append(correction)
+                        found = True
+                        break
+
+            # Keep correction even without position (still useful for the list)
+            if not found:
+                correction.paragraph_index = None
+                correction.start_offset = None
+                correction.end_offset = None
+                validated.append(correction)
+
+        return validated

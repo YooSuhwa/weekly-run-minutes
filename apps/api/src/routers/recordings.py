@@ -7,7 +7,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 import aiofiles
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.lib.config import settings
 from src.lib.dependencies import get_db
 from src.lib.logging import get_logger
-from src.models import Meeting, MeetingStatus, Recording
+from src.models import Meeting, MeetingMode, MeetingStatus, Recording
+from src.models.recording import RecordingSource
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -50,6 +51,7 @@ class RecordingResponse(BaseModel):
     file_size: int
     mime_type: str
     duration_seconds: float | None
+    source: str
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -78,6 +80,7 @@ async def upload_recording(
     meeting_id: UUID,
     db: DB,
     file: UploadFile = File(...),
+    source: str = Form(default=RecordingSource.UPLOAD),
 ) -> Recording:
     """Upload a recording file for a meeting.
 
@@ -143,6 +146,14 @@ async def upload_recording(
             detail="Failed to save recording file",
         )
 
+    # Validate source
+    source_val = source if isinstance(source, str) else source.value
+    if source_val not in (RecordingSource.UPLOAD, RecordingSource.BROWSER):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid source: {source_val}. Must be 'upload' or 'browser'",
+        )
+
     # Create recording record
     recording = Recording(
         meeting_id=meeting_id,
@@ -151,11 +162,15 @@ async def upload_recording(
         file_path=str(file_path),
         file_size=file_size,
         mime_type=content_type,
+        source=source_val,
     )
     db.add(recording)
 
-    # Update meeting status
-    meeting.status = MeetingStatus.RECORDING_UPLOADED
+    # Update meeting status (only for upload mode)
+    # For realtime mode, the meeting is already at RECORDING_DONE
+    mode_val = meeting.meeting_mode if isinstance(meeting.meeting_mode, str) else meeting.meeting_mode.value
+    if mode_val == MeetingMode.UPLOAD:
+        meeting.status = MeetingStatus.RECORDING_UPLOADED
 
     await db.commit()
     await db.refresh(recording)
@@ -214,11 +229,13 @@ async def delete_meeting_recording(
     # Delete database record
     await db.delete(recording)
 
-    # Update meeting status if needed
+    # Update meeting status if needed (only for upload mode)
     meeting_result = await db.execute(select(Meeting).where(Meeting.id == meeting_id))
     meeting = meeting_result.scalar_one_or_none()
     if meeting and meeting.status == MeetingStatus.RECORDING_UPLOADED:
-        meeting.status = MeetingStatus.WEEKLY_REPORT_LOADED
+        mode_val = meeting.meeting_mode if isinstance(meeting.meeting_mode, str) else meeting.meeting_mode.value
+        if mode_val == MeetingMode.UPLOAD:
+            meeting.status = MeetingStatus.WEEKLY_REPORT_LOADED
 
     await db.commit()
 

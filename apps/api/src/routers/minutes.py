@@ -31,6 +31,9 @@ class CorrectionItemResponse(BaseModel):
     original: str
     corrected: str
     category: str
+    paragraph_index: int | None = None
+    start_offset: int | None = None
+    end_offset: int | None = None
 
 
 class MinutesResponse(BaseModel):
@@ -137,14 +140,21 @@ async def generate_minutes_task(meeting_id: UUID) -> None:
                 attendees=attendees,
             )
 
-            # Store minutes with corrections
+            # Store minutes with corrections (including position data)
             minutes = MeetingMinutes(
                 meeting_id=meeting_id,
                 content_markdown=result.content_markdown,
                 ai_model=result.ai_model,
                 prompt_version=result.prompt_version,
                 corrections=[
-                    {"original": c.original, "corrected": c.corrected, "category": c.category}
+                    {
+                        "original": c.original,
+                        "corrected": c.corrected,
+                        "category": c.category,
+                        "paragraph_index": c.paragraph_index,
+                        "start_offset": c.start_offset,
+                        "end_offset": c.end_offset,
+                    }
                     for c in result.corrections
                 ],
             )
