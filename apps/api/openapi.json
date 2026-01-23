@@ -1592,6 +1592,30 @@
         "title": "ConfluencePageSummary",
         "description": "Summary of a Confluence page."
       },
+      "CorrectionItemResponse": {
+        "properties": {
+          "original": {
+            "type": "string",
+            "title": "Original"
+          },
+          "corrected": {
+            "type": "string",
+            "title": "Corrected"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          }
+        },
+        "type": "object",
+        "required": [
+          "original",
+          "corrected",
+          "category"
+        ],
+        "title": "CorrectionItemResponse",
+        "description": "Single correction item."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2012,6 +2036,13 @@
               }
             ],
             "title": "Edited Content"
+          },
+          "corrections": {
+            "items": {
+              "$ref": "#/components/schemas/CorrectionItemResponse"
+            },
+            "type": "array",
+            "title": "Corrections"
           }
         },
         "type": "object",
@@ -2022,7 +2053,8 @@
           "ai_model",
           "prompt_version",
           "is_edited",
-          "edited_content"
+          "edited_content",
+          "corrections"
         ],
         "title": "MinutesResponse",
         "description": "Meeting minutes response."

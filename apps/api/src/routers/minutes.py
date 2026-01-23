@@ -24,6 +24,14 @@ router = APIRouter()
 DB = Annotated[AsyncSession, Depends(get_db)]
 
 
+class CorrectionItemResponse(BaseModel):
+    """Single correction item."""
+
+    original: str
+    corrected: str
+    category: str
+
+
 class MinutesResponse(BaseModel):
     """Meeting minutes response."""
 
@@ -34,6 +42,7 @@ class MinutesResponse(BaseModel):
     prompt_version: str
     is_edited: bool
     edited_content: str | None
+    corrections: list[CorrectionItemResponse]
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -127,12 +136,16 @@ async def generate_minutes_task(meeting_id: UUID) -> None:
                 attendees=attendees,
             )
 
-            # Store minutes
+            # Store minutes with corrections
             minutes = MeetingMinutes(
                 meeting_id=meeting_id,
                 content_markdown=result.content_markdown,
                 ai_model=result.ai_model,
                 prompt_version=result.prompt_version,
+                corrections=[
+                    {"original": c.original, "corrected": c.corrected, "category": c.category}
+                    for c in result.corrections
+                ],
             )
             db.add(minutes)
 

@@ -189,6 +189,119 @@ class TestRegenerateSection:
             await minutes_service.regenerate_section("# Original", "참석자")
 
 
+class TestParseCorrections:
+    def test_parses_valid_corrections_block(self, minutes_service):
+        raw = """# 회의록 내용
+
+## 참석자
+- 이상윤
+
+```json:corrections
+[
+  {"original": "에스디케이", "corrected": "SDK", "category": "terminology"},
+  {"original": "2024.1.15", "corrected": "2024-01-15", "category": "formatting"}
+]
+```"""
+        content, corrections = minutes_service._parse_corrections(raw)
+        assert "# 회의록 내용" in content
+        assert "```json:corrections" not in content
+        assert len(corrections) == 2
+        assert corrections[0].original == "에스디케이"
+        assert corrections[0].corrected == "SDK"
+        assert corrections[0].category == "terminology"
+        assert corrections[1].category == "formatting"
+
+    def test_empty_corrections_list(self, minutes_service):
+        raw = """# 회의록
+
+```json:corrections
+[]
+```"""
+        content, corrections = minutes_service._parse_corrections(raw)
+        assert "# 회의록" in content
+        assert len(corrections) == 0
+
+    def test_no_corrections_block(self, minutes_service):
+        raw = "# 회의록\n\n내용만 있음"
+        content, corrections = minutes_service._parse_corrections(raw)
+        assert content == raw
+        assert len(corrections) == 0
+
+    def test_invalid_json_returns_empty(self, minutes_service):
+        raw = """# 회의록
+
+```json:corrections
+not valid json
+```"""
+        content, corrections = minutes_service._parse_corrections(raw)
+        assert "# 회의록" in content
+        assert len(corrections) == 0
+
+    def test_missing_required_fields_skipped(self, minutes_service):
+        raw = """# 회의록
+
+```json:corrections
+[
+  {"original": "test", "corrected": "TEST", "category": "terminology"},
+  {"only_original": "no corrected field"},
+  {"original": "a", "corrected": "b"}
+]
+```"""
+        content, corrections = minutes_service._parse_corrections(raw)
+        assert len(corrections) == 2
+        assert corrections[0].original == "test"
+        # The third item has original+corrected but no category -> defaults to "terminology"
+        assert corrections[1].original == "a"
+        assert corrections[1].category == "terminology"
+
+    def test_corrections_with_response_including_whitespace(self, minutes_service):
+        raw = """# 회의록 내용
+
+
+```json:corrections
+[{"original": "GPT", "corrected": "GPT-4o", "category": "terminology"}]
+```
+"""
+        content, corrections = minutes_service._parse_corrections(raw)
+        assert len(corrections) == 1
+        assert corrections[0].corrected == "GPT-4o"
+
+    @pytest.mark.asyncio
+    async def test_generate_minutes_includes_corrections(self, minutes_service):
+        """Test that generate_minutes returns corrections from GPT response."""
+        mock_content = """# 회의록
+
+## 참석자
+- 이상윤
+
+```json:corrections
+[{"original": "에스디케이", "corrected": "SDK", "category": "terminology"}]
+```"""
+        mock_choice = MagicMock()
+        mock_choice.message.content = mock_content
+        mock_usage = MagicMock()
+        mock_usage.total_tokens = 300
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = mock_usage
+
+        minutes_service.client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        result = await minutes_service.generate_minutes(
+            transcript_text="이상윤: 에스디케이 배포 완료",
+            weekly_report_summary="이상윤: SDK 배포",
+            meeting_date="2024-01-15",
+            team_name="제품기술팀",
+            attendees=["이상윤"],
+        )
+
+        assert isinstance(result, MinutesGenerationResult)
+        assert len(result.corrections) == 1
+        assert result.corrections[0].original == "에스디케이"
+        assert result.corrections[0].corrected == "SDK"
+        assert "```json:corrections" not in result.content_markdown
+
+
 class TestEnhanceWithHighlights:
     @pytest.mark.asyncio
     async def test_p1_lite_returns_unchanged(self, minutes_service):

@@ -39,7 +39,11 @@ async def meeting_with_minutes(client: AsyncClient, meeting_id: str, db_session)
         meeting_id=UUID(meeting_id),
         content_markdown="# 2024-01-15 주간회의 회의록\n\n## 참석자\n- 이상윤",
         ai_model="gpt-4o",
-        prompt_version="1.0.0",
+        prompt_version="1.1.0",
+        corrections=[
+            {"original": "에스디케이", "corrected": "SDK", "category": "terminology"},
+            {"original": "2024.1.15", "corrected": "2024-01-15", "category": "formatting"},
+        ],
     )
     db_session.add(minutes)
     await db_session.commit()
@@ -118,6 +122,22 @@ class TestGetMeetingMinutes:
         assert "회의록" in data["content_markdown"]
         assert data["ai_model"] == "gpt-4o"
         assert data["is_edited"] is False
+
+    @pytest.mark.asyncio
+    async def test_get_minutes_includes_corrections(
+        self, client: AsyncClient, meeting_with_minutes: str
+    ):
+        response = await client.get(
+            f"/api/v1/minutes/meetings/{meeting_with_minutes}/minutes"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "corrections" in data
+        assert len(data["corrections"]) == 2
+        assert data["corrections"][0]["original"] == "에스디케이"
+        assert data["corrections"][0]["corrected"] == "SDK"
+        assert data["corrections"][0]["category"] == "terminology"
+        assert data["corrections"][1]["category"] == "formatting"
 
     @pytest.mark.asyncio
     async def test_get_minutes_not_found(self, client: AsyncClient, meeting_id: str):

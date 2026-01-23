@@ -1,6 +1,7 @@
 """Meeting minutes generation service using GPT."""
 
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 
 from openai import AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -18,16 +19,26 @@ class MinutesGenerationError(Exception):
 
 
 @dataclass
+class CorrectionItem:
+    """A single AI correction."""
+
+    original: str
+    corrected: str
+    category: str  # "terminology" | "formatting" | "grammar"
+
+
+@dataclass
 class MinutesGenerationResult:
     """Result from minutes generation."""
 
     content_markdown: str
     ai_model: str
     prompt_version: str
+    corrections: list[CorrectionItem] = field(default_factory=list)
 
 
 # Current prompt version for tracking
-PROMPT_VERSION = "1.0.0"
+PROMPT_VERSION = "1.1.0"
 
 # System prompt for meeting minutes generation
 SYSTEM_PROMPT = """당신은 주간회의 회의록을 작성하는 전문 비서입니다.
@@ -41,6 +52,8 @@ SYSTEM_PROMPT = """당신은 주간회의 회의록을 작성하는 전문 비�
 5. 중요한 결정사항이나 액션아이템은 별도로 정리합니다.
 6. 간결하고 명확하게 작성합니다.
 7. 불필요한 인사말이나 잡담은 제외합니다.
+8. 주간업무록에 있지만 회의에서 언급되지 않은 항목은 "※ 언급되지 않음"으로 표시합니다.
+9. 녹취록의 비표준 용어를 주간업무록의 공식 용어로 교정합니다 (예: "에스디케이" → "SDK").
 
 회의록 구조:
 # [날짜] 주간회의 회의록
@@ -54,6 +67,7 @@ SYSTEM_PROMPT = """당신은 주간회의 회의록을 작성하는 전문 비�
 - [상태] 업무 내용
   - 세부 내용
   - ...
+- ※ 언급되지 않음: [주간업무록에 있지만 발표하지 않은 항목]
 
 ### [다음 팀원명]
 ...
@@ -66,6 +80,23 @@ SYSTEM_PROMPT = """당신은 주간회의 회의록을 작성하는 전문 비�
 
 ## 기타 논의사항
 - 논의 내용 (있는 경우에만)
+
+응답 형식:
+회의록 마크다운을 작성한 후, 마지막에 다음 JSON 블록을 추가합니다:
+
+```json:corrections
+[
+  {"original": "교정 전 텍스트", "corrected": "교정 후 텍스트", "category": "terminology"},
+  ...
+]
+```
+
+category 값:
+- "terminology": 용어 교정 (비표준 표현 → 공식 용어)
+- "formatting": 포맷팅 교정 (날짜, 숫자 형식 등)
+- "grammar": 문법 교정
+
+교정이 없으면 빈 배열 `[]`을 사용합니다.
 """
 
 
@@ -123,8 +154,11 @@ class MinutesGeneratorService:
 {transcript_text}
 
 위 내용을 바탕으로 회의록을 마크다운 형식으로 작성해주세요.
-각 팀원의 발표 내용과 주간업무록의 내용을 매칭하여 정리하고,
-업무 상태([완료], [진행], [예정])를 명확히 표시해주세요.
+1. 각 팀원의 발표 내용과 주간업무록의 내용을 매칭하여 정리
+2. 업무 상태([완료], [진행], [예정])를 명확히 표시
+3. 주간업무록에 있지만 회의에서 언급되지 않은 항목은 "※ 언급되지 않음"으로 표시
+4. 녹취록의 비표준 용어를 주간업무록의 공식 용어로 교정
+5. 마지막에 교정 목록을 JSON으로 첨부 (시스템 프롬프트의 형식 준수)
 """
 
         try:
@@ -134,30 +168,83 @@ class MinutesGeneratorService:
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.3,  # Lower temperature for more consistent output
+                temperature=0.3,
                 max_tokens=4096,
             )
 
-            content = response.choices[0].message.content or ""
+            raw_content = response.choices[0].message.content or ""
 
-            if not content.strip():
+            if not raw_content.strip():
                 raise MinutesGenerationError("Empty response from GPT")
+
+            # Parse corrections from the response
+            content, corrections = self._parse_corrections(raw_content)
 
             logger.info(
                 "Minutes generated successfully",
                 model=self.model,
                 tokens_used=response.usage.total_tokens if response.usage else 0,
+                corrections_count=len(corrections),
             )
 
             return MinutesGenerationResult(
                 content_markdown=content,
                 ai_model=self.model,
                 prompt_version=PROMPT_VERSION,
+                corrections=corrections,
             )
 
         except Exception as e:
             logger.exception("GPT API error during minutes generation")
             raise MinutesGenerationError(f"Failed to generate minutes: {e}")
+
+    def _parse_corrections(self, raw_content: str) -> tuple[str, list[CorrectionItem]]:
+        """Parse corrections JSON block from GPT response.
+
+        The response format is:
+        <minutes markdown>
+        ```json:corrections
+        [{"original": "...", "corrected": "...", "category": "..."}]
+        ```
+
+        Returns:
+            Tuple of (minutes_markdown, corrections_list)
+        """
+        corrections: list[CorrectionItem] = []
+
+        # Try to find the corrections JSON block
+        import re
+
+        pattern = r"```json:corrections\s*\n(.*?)\n```"
+        match = re.search(pattern, raw_content, re.DOTALL)
+
+        if match:
+            json_str = match.group(1).strip()
+            # Remove the corrections block from the content
+            content = raw_content[: match.start()].rstrip()
+
+            try:
+                items = json.loads(json_str)
+                if isinstance(items, list):
+                    for item in items:
+                        if (
+                            isinstance(item, dict)
+                            and "original" in item
+                            and "corrected" in item
+                        ):
+                            corrections.append(
+                                CorrectionItem(
+                                    original=item["original"],
+                                    corrected=item["corrected"],
+                                    category=item.get("category", "terminology"),
+                                )
+                            )
+            except (json.JSONDecodeError, TypeError):
+                logger.warning("Failed to parse corrections JSON, ignoring")
+        else:
+            content = raw_content
+
+        return content, corrections
 
     async def regenerate_section(
         self,

@@ -5,7 +5,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import Date, ForeignKey, String, Text
+from sqlalchemy import JSON, Date, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.base import BaseModel
@@ -96,6 +96,10 @@ class MeetingMinutes(BaseModel):
     # AI generation metadata
     ai_model: Mapped[str] = mapped_column(String(50), nullable=False)
     prompt_version: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    # AI corrections list (P1-lite: simple list without position)
+    # Structure: [{"original": "...", "corrected": "...", "category": "terminology|formatting|grammar"}]
+    corrections: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
 
     # Edit tracking
     is_edited: Mapped[bool] = mapped_column(default=False, nullable=False)

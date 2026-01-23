@@ -36,7 +36,11 @@ export default function MinutesPage() {
       setMinutes((prev) => ({
         ...prev,
         content: minutesData.edited_content || minutesData.content_markdown,
-        corrections: [],
+        corrections: (minutesData.corrections ?? []).map((c) => ({
+          original: c.original,
+          corrected: c.corrected,
+          category: c.category as CorrectionItem["category"],
+        })),
       }));
     } else if (minutesError) {
       // Demo content on error

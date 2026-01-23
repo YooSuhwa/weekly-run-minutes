@@ -5,6 +5,7 @@
  * WeeklyRun - AI Meeting Orchestration API
  * OpenAPI spec version: 0.1.0
  */
+import type { CorrectionItemResponse } from './correctionItemResponse';
 
 /**
  * Meeting minutes response.
@@ -17,4 +18,5 @@ export interface MinutesResponse {
   prompt_version: string;
   is_edited: boolean;
   edited_content: string | null;
+  corrections: CorrectionItemResponse[];
 }

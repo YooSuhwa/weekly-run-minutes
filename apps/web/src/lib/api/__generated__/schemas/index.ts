@@ -8,6 +8,7 @@
 
 export * from './bodyUploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost';
 export * from './confluencePageSummary';
+export * from './correctionItemResponse';
 export * from './exportMinutesApiV1MinutesMeetingsMeetingIdMinutesExportGet200';
 export * from './exportMinutesApiV1MinutesMeetingsMeetingIdMinutesExportGetParams';
 export * from './getMeetingProgressApiV1MeetingsMeetingIdProgressGet200';
