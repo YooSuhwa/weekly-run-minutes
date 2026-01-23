@@ -27,6 +27,9 @@ htmlcov/
 .env.local
 .env*.local
 
+# Claude MCP configs (may contain tokens)
+.claude/mcp-configs/
+
 # IDE
 .idea/
 .vscode/
