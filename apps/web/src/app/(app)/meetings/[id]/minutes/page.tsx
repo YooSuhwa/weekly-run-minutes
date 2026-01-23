@@ -9,6 +9,11 @@ import { type CorrectionItem, minutesAtom } from "@/atoms/minutes";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { Weeky } from "@/components/weeky/weeky";
+import {
+  useGetMeetingMinutesApiV1MinutesMeetingsMeetingIdMinutesGet,
+  usePublishMinutesToConfluenceApiV1MinutesMeetingsMeetingIdPublishPost,
+  useUpdateMeetingMinutesApiV1MinutesMeetingsMeetingIdMinutesPut,
+} from "@/lib/api/__generated__/minutes/minutes";
 import { CorrectionPanel } from "./correction-panel";
 import { MinutesEditor } from "./minutes-editor";
 
@@ -21,32 +26,73 @@ export default function MinutesPage() {
   const [isPublishing, setIsPublishing] = useState(false);
   const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Fetch minutes on mount
+  // Fetch minutes via generated hook
+  const { data: minutesData, error: minutesError } =
+    useGetMeetingMinutesApiV1MinutesMeetingsMeetingIdMinutesGet(meetingId);
+
+  // Sync fetched data to atom
   useEffect(() => {
-    async function fetchMinutes() {
-      try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/minutes/meetings/${meetingId}/minutes`,
-        );
-        if (res.ok) {
-          const data = await res.json();
-          setMinutes((prev) => ({
-            ...prev,
-            content: data.edited_content || data.content_markdown,
-            corrections: [], // TODO: Get from API
-          }));
-        }
-      } catch {
-        // Demo content
+    if (minutesData) {
+      setMinutes((prev) => ({
+        ...prev,
+        content: minutesData.edited_content || minutesData.content_markdown,
+        corrections: [],
+      }));
+    } else if (minutesError) {
+      // Demo content on error
+      setMinutes((prev) => ({
+        ...prev,
+        content: getDemoContent(),
+        corrections: getDemoCorrections(),
+      }));
+    }
+  }, [minutesData, minutesError, setMinutes]);
+
+  // Update minutes mutation
+  const updateMinutes = useUpdateMeetingMinutesApiV1MinutesMeetingsMeetingIdMinutesPut({
+    mutation: {
+      onSuccess: () => {
         setMinutes((prev) => ({
           ...prev,
-          content: getDemoContent(),
-          corrections: getDemoCorrections(),
+          saveStatus: "saved",
+          lastSavedAt: new Date().toISOString(),
         }));
-      }
-    }
-    fetchMinutes();
-  }, [meetingId, setMinutes]);
+      },
+      onError: () => {
+        setMinutes((prev) => ({ ...prev, saveStatus: "error" }));
+      },
+    },
+  });
+
+  // Publish mutation
+  const publishMinutes = usePublishMinutesToConfluenceApiV1MinutesMeetingsMeetingIdPublishPost({
+    mutation: {
+      onSuccess: (data) => {
+        setConfluence((prev) => ({
+          ...prev,
+          publishStatus: "uploaded",
+          publishedPage: {
+            id: data.confluence_page_id,
+            title: "",
+            url: data.confluence_page_url,
+          },
+        }));
+        toast.success("Confluence에 게시되었습니다!");
+      },
+      onError: (error) => {
+        const errorDetail = (error as { detail?: string })?.detail || "게시 실패";
+        setConfluence((prev) => ({
+          ...prev,
+          publishStatus: "error",
+          errorMessage: errorDetail,
+        }));
+        toast.error(errorDetail);
+      },
+      onSettled: () => {
+        setIsPublishing(false);
+      },
+    },
+  });
 
   // Auto-save every 30 seconds
   useEffect(() => {
@@ -54,52 +100,25 @@ export default function MinutesPage() {
 
     if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
 
-    autoSaveRef.current = setTimeout(async () => {
-      try {
-        await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/minutes/meetings/${meetingId}/minutes`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ content_markdown: minutes.content }),
-          },
-        );
-        setMinutes((prev) => ({
-          ...prev,
-          saveStatus: "saved",
-          lastSavedAt: new Date().toISOString(),
-        }));
-      } catch {
-        // Silently fail auto-save
-      }
+    autoSaveRef.current = setTimeout(() => {
+      updateMinutes.mutate({
+        meetingId,
+        data: { content_markdown: minutes.content },
+      });
     }, 30000);
 
     return () => {
       if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
     };
-  }, [minutes.content, minutes.isEdited, meetingId, setMinutes]);
+  }, [minutes.content, minutes.isEdited, meetingId, updateMinutes]);
 
-  const handleSaveDraft = async () => {
+  const handleSaveDraft = () => {
     setMinutes((prev) => ({ ...prev, saveStatus: "saving" }));
-    try {
-      await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/minutes/meetings/${meetingId}/minutes`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content_markdown: minutes.content }),
-        },
-      );
-      setMinutes((prev) => ({
-        ...prev,
-        saveStatus: "saved",
-        lastSavedAt: new Date().toISOString(),
-      }));
-      toast.success("저장되었습니다");
-    } catch {
-      setMinutes((prev) => ({ ...prev, saveStatus: "error" }));
-      toast.error("저장에 실패했습니다");
-    }
+    updateMinutes.mutate({
+      meetingId,
+      data: { content_markdown: minutes.content },
+    });
+    toast.success("저장되었습니다");
   };
 
   const handleDownload = () => {
@@ -113,43 +132,10 @@ export default function MinutesPage() {
     toast.success("다운로드 완료");
   };
 
-  const handlePublish = async () => {
+  const handlePublish = () => {
     setIsPublishing(true);
     setConfluence((prev) => ({ ...prev, publishStatus: "uploading" }));
-
-    try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/minutes/meetings/${meetingId}/publish`,
-        { method: "POST" },
-      );
-
-      if (res.ok) {
-        const data = await res.json();
-        setConfluence((prev) => ({
-          ...prev,
-          publishStatus: "uploaded",
-          publishedPage: {
-            id: data.confluence_page_id,
-            title: "",
-            url: data.confluence_page_url,
-          },
-        }));
-        toast.success("Confluence에 게시되었습니다!");
-      } else {
-        const error = await res.json();
-        setConfluence((prev) => ({
-          ...prev,
-          publishStatus: "error",
-          errorMessage: error.detail,
-        }));
-        toast.error(error.detail || "게시 실패");
-      }
-    } catch {
-      toast.error("Confluence 연결에 실패했습니다");
-      setConfluence((prev) => ({ ...prev, publishStatus: "error" }));
-    } finally {
-      setIsPublishing(false);
-    }
+    publishMinutes.mutate({ meetingId });
   };
 
   const handleContentChange = useCallback(

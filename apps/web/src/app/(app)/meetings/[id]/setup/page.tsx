@@ -12,6 +12,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileUpload } from "@/components/ui/file-upload";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { useToast } from "@/components/ui/toast";
+import { useUploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost } from "@/lib/api/__generated__/recordings/recordings";
+import {
+  useGetTeamApiV1TeamsTeamIdGet,
+  useListTeamsApiV1TeamsGet,
+} from "@/lib/api/__generated__/teams/teams";
+import { useStartTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost } from "@/lib/api/__generated__/transcription/transcription";
+import { useLoadWeeklyReportForMeetingApiV1WeeklyReportsMeetingsMeetingIdWeeklyReportPost } from "@/lib/api/__generated__/weekly-reports/weekly-reports";
 import { cn } from "@/lib/utils";
 
 export default function MeetingSetupPage() {
@@ -27,40 +34,83 @@ export default function MeetingSetupPage() {
   const [confluencePageId, setConfluencePageId] = useState("");
   const [isUploading, setIsUploading] = useState(false);
 
-  // Fetch team members on mount
+  // Fetch teams list
+  const { data: teams } = useListTeamsApiV1TeamsGet();
+  const firstTeamId = teams?.[0]?.id ?? "";
+
+  // Fetch first team's details (members)
+  const { data: teamData } = useGetTeamApiV1TeamsTeamIdGet(firstTeamId, {
+    query: { enabled: !!firstTeamId },
+  });
+
+  // Sync team members from query to atoms
   useEffect(() => {
-    async function fetchMembers() {
-      try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/teams`,
-        );
-        if (res.ok) {
-          const teams = await res.json();
-          if (teams.length > 0) {
-            const teamRes = await fetch(
-              `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/teams/${teams[0].id}`,
-            );
-            if (teamRes.ok) {
-              const team = await teamRes.json();
-              setMembers(team.members || []);
-              setSelectedMembers(team.members?.map((m: TeamMember) => m.id) || []);
-            }
-          }
-        }
-      } catch {
-        // Use fallback data
-        setMembers([
-          { id: "1", name: "이상윤", presentationOrder: 1, isActive: true, teamId: "" },
-          { id: "2", name: "선설희", presentationOrder: 2, isActive: true, teamId: "" },
-          { id: "3", name: "최보연", presentationOrder: 3, isActive: true, teamId: "" },
-          { id: "4", name: "유수화", presentationOrder: 4, isActive: true, teamId: "" },
-          { id: "5", name: "김정연", presentationOrder: 5, isActive: true, teamId: "" },
-        ]);
-        setSelectedMembers(["1", "2", "3", "4", "5"]);
-      }
+    if (teamData?.members) {
+      const mappedMembers: TeamMember[] = teamData.members.map((m) => ({
+        id: m.id,
+        name: m.name,
+        presentationOrder: m.presentation_order,
+        isActive: m.is_active,
+        teamId: m.team_id,
+      }));
+      setMembers(mappedMembers);
+      setSelectedMembers(mappedMembers.map((m) => m.id));
     }
-    fetchMembers();
-  }, [setMembers, setSelectedMembers]);
+  }, [teamData, setMembers, setSelectedMembers]);
+
+  // Weekly report mutation
+  const loadWeeklyReport =
+    useLoadWeeklyReportForMeetingApiV1WeeklyReportsMeetingsMeetingIdWeeklyReportPost({
+      mutation: {
+        onSuccess: () => {
+          setConfluence({
+            ...confluence,
+            weeklyReportLoaded: true,
+            weeklyReportPageId: confluencePageId,
+          });
+          toast.success("주간업무록을 불러왔습니다");
+        },
+        onError: () => {
+          toast.error("주간업무록 로드에 실패했습니다");
+        },
+      },
+    });
+
+  // Upload recording mutation
+  const uploadRecording = useUploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost({
+    mutation: {
+      onSuccess: () => {
+        setRecording({ ...recording, uploadStatus: "uploaded", uploadProgress: 100 });
+        toast.success("파일 업로드 완료");
+        // Start transcription after upload
+        startTranscription.mutate({ meetingId });
+      },
+      onError: (error) => {
+        const errorDetail = (error as { detail?: string })?.detail || "업로드 실패";
+        setRecording({ ...recording, uploadStatus: "error", errorMessage: errorDetail });
+        toast.error(errorDetail);
+        setIsUploading(false);
+      },
+    },
+  });
+
+  // Start transcription mutation
+  const startTranscription = useStartTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost(
+    {
+      mutation: {
+        onSuccess: () => {
+          router.push(`/meetings/${meetingId}/processing`);
+        },
+        onError: () => {
+          // Navigate anyway, processing page will handle polling
+          router.push(`/meetings/${meetingId}/processing`);
+        },
+        onSettled: () => {
+          setIsUploading(false);
+        },
+      },
+    },
+  );
 
   const toggleMember = (id: string) => {
     setSelectedMembers((prev) =>
@@ -76,40 +126,15 @@ export default function MeetingSetupPage() {
     setRecording({ ...recording, file: null, uploadStatus: "idle" });
   };
 
-  const handleLoadWeeklyReport = async () => {
+  const handleLoadWeeklyReport = () => {
     if (!confluencePageId.trim()) return;
-
-    try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/weekly-reports/meetings/${meetingId}/weekly-report`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ confluence_page_id: confluencePageId }),
-        },
-      );
-
-      if (res.ok) {
-        setConfluence({
-          ...confluence,
-          weeklyReportLoaded: true,
-          weeklyReportPageId: confluencePageId,
-        });
-        toast.success("주간업무록을 불러왔습니다");
-      } else {
-        toast.error("주간업무록 로드에 실패했습니다");
-      }
-    } catch {
-      toast.warning("API 연결 불가 - 오프라인 모드로 진행합니다");
-      setConfluence({
-        ...confluence,
-        weeklyReportLoaded: true,
-        weeklyReportPageId: confluencePageId,
-      });
-    }
+    loadWeeklyReport.mutate({
+      meetingId,
+      data: { confluence_page_id: confluencePageId },
+    });
   };
 
-  const handleStartProcessing = async () => {
+  const handleStartProcessing = () => {
     if (!recording.file) {
       toast.error("녹음 파일을 업로드해주세요");
       return;
@@ -118,41 +143,10 @@ export default function MeetingSetupPage() {
     setIsUploading(true);
     setRecording({ ...recording, uploadStatus: "uploading", uploadProgress: 0 });
 
-    try {
-      // Upload file
-      const formData = new FormData();
-      formData.append("file", recording.file);
-
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/recordings/meetings/${meetingId}/recording`,
-        {
-          method: "POST",
-          body: formData,
-        },
-      );
-
-      if (res.ok) {
-        setRecording({ ...recording, uploadStatus: "uploaded", uploadProgress: 100 });
-        toast.success("파일 업로드 완료");
-
-        // Start transcription
-        await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/transcription/meetings/${meetingId}/transcribe`,
-          { method: "POST" },
-        );
-
-        router.push(`/meetings/${meetingId}/processing`);
-      } else {
-        const error = await res.json();
-        setRecording({ ...recording, uploadStatus: "error", errorMessage: error.detail });
-        toast.error(error.detail || "업로드 실패");
-      }
-    } catch {
-      toast.warning("API 연결 불가 - 데모 모드로 진행합니다");
-      router.push(`/meetings/${meetingId}/processing`);
-    } finally {
-      setIsUploading(false);
-    }
+    uploadRecording.mutate({
+      meetingId,
+      data: { file: recording.file },
+    });
   };
 
   return (
@@ -184,9 +178,19 @@ export default function MeetingSetupPage() {
               <Button
                 variant="outline"
                 onClick={handleLoadWeeklyReport}
-                disabled={!confluencePageId.trim() || confluence.weeklyReportLoaded}
+                disabled={
+                  !confluencePageId.trim() ||
+                  confluence.weeklyReportLoaded ||
+                  loadWeeklyReport.isPending
+                }
               >
-                {confluence.weeklyReportLoaded ? <Check className="h-4 w-4" /> : "불러오기"}
+                {confluence.weeklyReportLoaded ? (
+                  <Check className="h-4 w-4" />
+                ) : loadWeeklyReport.isPending ? (
+                  "로딩..."
+                ) : (
+                  "불러오기"
+                )}
               </Button>
             </div>
             {confluence.weeklyReportLoaded && (

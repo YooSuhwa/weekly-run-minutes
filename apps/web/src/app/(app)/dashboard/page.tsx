@@ -1,34 +1,34 @@
 "use client";
 
-import { useAtom } from "jotai";
 import { Plus } from "lucide-react";
 import Link from "next/link";
-import { useEffect } from "react";
-import { meetingsListAtom } from "@/atoms/meeting";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useListMeetingsApiV1MeetingsGet } from "@/lib/api/__generated__/meetings/meetings";
 import { MeetingCard } from "./meeting-card";
 
 export default function DashboardPage() {
-  const [meetings, setMeetings] = useAtom(meetingsListAtom);
+  const { data: meetings = [], isLoading, error } = useListMeetingsApiV1MeetingsGet();
 
-  useEffect(() => {
-    // TODO: Replace with actual API call via Orval
-    async function fetchMeetings() {
-      try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/meetings`,
-        );
-        if (res.ok) {
-          const data = await res.json();
-          setMeetings(data);
-        }
-      } catch {
-        // API not available yet - show empty state
-      }
-    }
-    fetchMeetings();
-  }, [setMeetings]);
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-8">
+        <div className="flex items-center justify-center py-16">
+          <p className="text-muted-foreground">로딩 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-8">
+        <div className="flex items-center justify-center py-16">
+          <p className="text-destructive">회의 목록을 불러오는데 실패했습니다</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
