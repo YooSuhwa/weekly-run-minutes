@@ -24,6 +24,7 @@ export default function MinutesPage() {
   const [minutes, setMinutes] = useAtom(minutesAtom);
   const [confluence, setConfluence] = useAtom(confluenceAtom);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [activeCorrectionIndex, setActiveCorrectionIndex] = useState<number | null>(null);
   const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fetch minutes via generated hook
@@ -152,6 +153,14 @@ export default function MinutesPage() {
     [setMinutes],
   );
 
+  const handleCorrectionClick = useCallback(
+    (correction: CorrectionItem) => {
+      const index = minutes.corrections.indexOf(correction);
+      setActiveCorrectionIndex(index >= 0 ? index : null);
+    },
+    [minutes.corrections],
+  );
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
@@ -190,10 +199,18 @@ export default function MinutesPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <MinutesEditor content={minutes.content} onChange={handleContentChange} />
+          <MinutesEditor
+            content={minutes.content}
+            onChange={handleContentChange}
+            corrections={minutes.corrections}
+            activeCorrectionIndex={activeCorrectionIndex}
+          />
         </div>
         <div>
-          <CorrectionPanel corrections={minutes.corrections} />
+          <CorrectionPanel
+            corrections={minutes.corrections}
+            onCorrectionClick={handleCorrectionClick}
+          />
         </div>
       </div>
     </div>

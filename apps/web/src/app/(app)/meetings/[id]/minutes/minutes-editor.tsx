@@ -5,19 +5,32 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Bold, Italic, List, ListOrdered, Redo, Strikethrough, Undo } from "lucide-react";
 import { useEffect } from "react";
+import type { CorrectionItem } from "@/atoms/minutes";
 import { cn } from "@/lib/utils";
+import { CorrectionHighlight } from "./correction-highlight-extension";
 
 interface MinutesEditorProps {
   content: string;
   onChange: (content: string) => void;
+  corrections?: CorrectionItem[];
+  activeCorrectionIndex?: number | null;
 }
 
-export function MinutesEditor({ content, onChange }: MinutesEditorProps) {
+export function MinutesEditor({
+  content,
+  onChange,
+  corrections = [],
+  activeCorrectionIndex = null,
+}: MinutesEditorProps) {
   const editor = useEditor({
     extensions: [
       StarterKit,
       Placeholder.configure({
         placeholder: "회의록을 작성하세요...",
+      }),
+      CorrectionHighlight.configure({
+        corrections,
+        activeCorrectionIndex,
       }),
     ],
     content,
@@ -31,6 +44,16 @@ export function MinutesEditor({ content, onChange }: MinutesEditorProps) {
       },
     },
   });
+
+  // Update correction highlights when corrections or active index change
+  useEffect(() => {
+    if (editor) {
+      editor.extensionManager.extensions
+        .find((ext) => ext.name === "correctionHighlight")
+        ?.configure({ corrections, activeCorrectionIndex });
+      editor.view.dispatch(editor.state.tr);
+    }
+  }, [editor, corrections, activeCorrectionIndex]);
 
   // Update editor content when external content changes
   useEffect(() => {

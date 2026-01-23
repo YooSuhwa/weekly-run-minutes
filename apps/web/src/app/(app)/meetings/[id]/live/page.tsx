@@ -16,6 +16,7 @@ import type { WeekyExpression } from "@/components/weeky/weeky";
 import { Weeky } from "@/components/weeky/weeky";
 import { useKeyboardShortcuts, useMeetingOrchestration } from "@/hooks";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
+import { uploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost } from "@/lib/api/__generated__/recordings/recordings";
 import { formatDuration } from "@/lib/utils";
 
 export default function LiveMeetingPage() {
@@ -84,9 +85,16 @@ export default function LiveMeetingPage() {
   const handleEndMeeting = useCallback(async () => {
     setIsEnding(true);
     try {
-      stopRecording();
+      const blob = stopRecording();
       await endMeeting(meetingId);
-      // TODO: Upload browser recording blob via recordings API
+
+      if (blob) {
+        await uploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost(meetingId, {
+          file: blob,
+          source: "browser",
+        });
+      }
+
       router.push(`/meetings/${meetingId}/processing`);
     } catch {
       setIsEnding(false);
