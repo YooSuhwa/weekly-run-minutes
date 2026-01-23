@@ -29,6 +29,27 @@ describe("Weeky", () => {
       const img = screen.getByRole("img", { name: "Weeky sorry" });
       expect(img).toBeDefined();
     });
+
+    it("renders all 12 expressions", () => {
+      const expressions = [
+        "greeting",
+        "listening",
+        "questioning",
+        "celebrating",
+        "waiting",
+        "noting",
+        "next",
+        "encouragement",
+        "goodbye",
+      ] as const;
+
+      for (const expr of expressions) {
+        cleanup();
+        render(<Weeky expression={expr} />);
+        const img = screen.getByRole("img", { name: `Weeky ${expr}` });
+        expect(img).toBeDefined();
+      }
+    });
   });
 
   describe("default messages", () => {
@@ -109,6 +130,28 @@ describe("Weeky", () => {
       render(<Weeky expression="sorry" />);
       const img = screen.getByRole("img");
       expect(img.getAttribute("class")).not.toContain("animate-pulse");
+    });
+
+    it("applies animate-pulse for waiting expression", () => {
+      render(<Weeky expression="waiting" />);
+      const img = screen.getByRole("img");
+      expect(img.getAttribute("class")).toContain("animate-pulse");
+    });
+
+    it("applies animate-pulse for listening expression", () => {
+      render(<Weeky expression="listening" />);
+      const img = screen.getByRole("img");
+      expect(img.getAttribute("class")).toContain("animate-pulse");
+    });
+
+    it("does not apply animate-pulse for non-animated expressions", () => {
+      const nonAnimated = ["done", "greeting", "questioning", "celebrating", "next"] as const;
+      for (const expr of nonAnimated) {
+        cleanup();
+        render(<Weeky expression={expr} />);
+        const img = screen.getByRole("img");
+        expect(img.getAttribute("class")).not.toContain("animate-pulse");
+      }
     });
   });
 
