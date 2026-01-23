@@ -1,0 +1,63 @@
+[tools]
+python = "3.13"
+uv = "latest"
+
+[tasks.dev]
+description = "Start development server"
+run = "uv run poe dev"
+
+[tasks.start]
+description = "Start production server"
+run = "uv run poe start"
+
+[tasks.test]
+description = "Run tests"
+run = "uv run poe test"
+
+[tasks."test:cov"]
+description = "Run tests with coverage"
+run = "uv run poe test:cov"
+
+[tasks.lint]
+description = "Run linter"
+run = "uv run poe lint"
+
+[tasks."lint:fix"]
+description = "Fix linting issues"
+run = "uv run poe lint:fix"
+
+[tasks.format]
+description = "Format code"
+run = "uv run poe format"
+
+[tasks."format:check"]
+description = "Check code formatting"
+run = "uv run poe format:check"
+
+[tasks.typecheck]
+description = "Run type checker"
+run = "uv run poe typecheck"
+
+[tasks.migrate]
+description = "Run database migrations"
+run = "uv run poe migrate"
+
+[tasks."migrate:create"]
+description = "Create new migration"
+run = "uv run poe migrate:create"
+
+[tasks.seed]
+description = "Run seed data"
+run = "uv run poe seed"
+
+[tasks."gen:openapi"]
+description = "Generate OpenAPI schema"
+run = "uv run poe gen:openapi"
+
+[tasks."infra:up"]
+description = "Start local infrastructure"
+run = "docker compose -f docker-compose.infra.yml up -d"
+
+[tasks."infra:down"]
+description = "Stop local infrastructure"
+run = "docker compose -f docker-compose.infra.yml down"

@@ -1,0 +1,29 @@
+[tools]
+python = "3.13"
+uv = "latest"
+node = "22"
+pnpm = "latest"
+
+[tasks.dev]
+description = "Start all services"
+depends = ["//apps/api:dev", "//apps/web:dev"]
+
+[tasks.lint]
+description = "Lint all apps"
+depends = ["//apps/api:lint", "//apps/web:lint"]
+
+[tasks.format]
+description = "Format all apps"
+depends = ["//apps/api:format", "//apps/web:format"]
+
+[tasks.test]
+description = "Test all apps"
+depends = ["//apps/api:test", "//apps/web:test"]
+
+[tasks.typecheck]
+description = "Type check all apps"
+depends = ["//apps/api:typecheck", "//apps/web:typecheck"]
+
+[tasks."gen:api"]
+description = "Generate OpenAPI schema and API clients"
+depends = ["//apps/api:gen:openapi", "//apps/web:gen:api"]

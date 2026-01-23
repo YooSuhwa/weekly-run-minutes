@@ -47,3 +47,42 @@ For complex problems, use split role sub-agents:
 - Security expert
 - Consistency reviewer
 - Redundancy checker
+
+---
+
+## WeeklyRun Project Specific
+
+### Phase-Based Agent Usage
+
+| Phase | Primary Agents | Focus |
+|-------|---------------|-------|
+| P1-lite | tdd-guide, code-reviewer | 파이프라인 검증 |
+| P1-full | planner, architect | 오케스트레이션 UX |
+| P2 | security-reviewer | 멀티팀 보안 |
+
+### Critical Paths (Must Use Agents)
+
+1. **STT 파이프라인**
+   - planner: ElevenLabs 연동 설계
+   - tdd-guide: STT 서비스 TDD
+   - code-reviewer: 에러 핸들링 검증
+
+2. **주간업무록 파싱**
+   - tdd-guide: 파싱 로직 TDD
+   - code-reviewer: 엣지 케이스 검증
+
+3. **회의록 생성**
+   - planner: GPT 프롬프트 설계
+   - security-reviewer: API 키 관리 확인
+
+4. **Confluence 연동**
+   - tdd-guide: API v2 연동 TDD
+   - code-reviewer: 재시도 로직 검증
+
+### Backend vs Frontend Order
+
+```
+Backend 완료 → OpenAPI 생성 → Frontend 시작
+```
+
+Backend 에이전트 작업 완료 후에만 Frontend 에이전트 작업 시작

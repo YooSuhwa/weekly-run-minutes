@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv sync:*)",
+      "Bash(uv run python:*)",
+      "Bash(PYTHONPATH=. uv run python:*)",
+      "Bash(pnpm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx orval)",
+      "Bash(dir:*)",
+      "Bash(npx next build)",
+      "Bash(npx biome check:*)",
+      "Bash(PYTHONPATH=. uv run:*)"
+    ]
+  }
+}

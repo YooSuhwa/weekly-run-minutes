@@ -1,0 +1,246 @@
+"use client";
+
+import { useAtom } from "jotai";
+import { Download, FileText, Send } from "lucide-react";
+import { useParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { confluenceAtom } from "@/atoms/confluence";
+import { type CorrectionItem, minutesAtom } from "@/atoms/minutes";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
+import { Weeky } from "@/components/weeky/weeky";
+import { CorrectionPanel } from "./correction-panel";
+import { MinutesEditor } from "./minutes-editor";
+
+export default function MinutesPage() {
+  const params = useParams();
+  const toast = useToast();
+  const meetingId = params.id as string;
+  const [minutes, setMinutes] = useAtom(minutesAtom);
+  const [confluence, setConfluence] = useAtom(confluenceAtom);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Fetch minutes on mount
+  useEffect(() => {
+    async function fetchMinutes() {
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/minutes/meetings/${meetingId}/minutes`,
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setMinutes((prev) => ({
+            ...prev,
+            content: data.edited_content || data.content_markdown,
+            corrections: [], // TODO: Get from API
+          }));
+        }
+      } catch {
+        // Demo content
+        setMinutes((prev) => ({
+          ...prev,
+          content: getDemoContent(),
+          corrections: getDemoCorrections(),
+        }));
+      }
+    }
+    fetchMinutes();
+  }, [meetingId, setMinutes]);
+
+  // Auto-save every 30 seconds
+  useEffect(() => {
+    if (!minutes.isEdited) return;
+
+    if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
+
+    autoSaveRef.current = setTimeout(async () => {
+      try {
+        await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/minutes/meetings/${meetingId}/minutes`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content_markdown: minutes.content }),
+          },
+        );
+        setMinutes((prev) => ({
+          ...prev,
+          saveStatus: "saved",
+          lastSavedAt: new Date().toISOString(),
+        }));
+      } catch {
+        // Silently fail auto-save
+      }
+    }, 30000);
+
+    return () => {
+      if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
+    };
+  }, [minutes.content, minutes.isEdited, meetingId, setMinutes]);
+
+  const handleSaveDraft = async () => {
+    setMinutes((prev) => ({ ...prev, saveStatus: "saving" }));
+    try {
+      await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/minutes/meetings/${meetingId}/minutes`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content_markdown: minutes.content }),
+        },
+      );
+      setMinutes((prev) => ({
+        ...prev,
+        saveStatus: "saved",
+        lastSavedAt: new Date().toISOString(),
+      }));
+      toast.success("저장되었습니다");
+    } catch {
+      setMinutes((prev) => ({ ...prev, saveStatus: "error" }));
+      toast.error("저장에 실패했습니다");
+    }
+  };
+
+  const handleDownload = () => {
+    const blob = new Blob([minutes.content], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `meeting-minutes-${meetingId}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("다운로드 완료");
+  };
+
+  const handlePublish = async () => {
+    setIsPublishing(true);
+    setConfluence((prev) => ({ ...prev, publishStatus: "uploading" }));
+
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/minutes/meetings/${meetingId}/publish`,
+        { method: "POST" },
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        setConfluence((prev) => ({
+          ...prev,
+          publishStatus: "uploaded",
+          publishedPage: {
+            id: data.confluence_page_id,
+            title: "",
+            url: data.confluence_page_url,
+          },
+        }));
+        toast.success("Confluence에 게시되었습니다!");
+      } else {
+        const error = await res.json();
+        setConfluence((prev) => ({
+          ...prev,
+          publishStatus: "error",
+          errorMessage: error.detail,
+        }));
+        toast.error(error.detail || "게시 실패");
+      }
+    } catch {
+      toast.error("Confluence 연결에 실패했습니다");
+      setConfluence((prev) => ({ ...prev, publishStatus: "error" }));
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  const handleContentChange = useCallback(
+    (content: string) => {
+      setMinutes((prev) => ({ ...prev, content, isEdited: true, saveStatus: "idle" }));
+    },
+    [setMinutes],
+  );
+
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-8">
+      <div className="mb-6 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Weeky expression="done" size="sm" />
+          <div>
+            <h1 className="text-xl font-bold">회의록 첨삭</h1>
+            <p className="text-xs text-muted-foreground">
+              {minutes.saveStatus === "saved"
+                ? `마지막 저장: ${minutes.lastSavedAt ? new Date(minutes.lastSavedAt).toLocaleTimeString("ko-KR") : ""}`
+                : minutes.saveStatus === "saving"
+                  ? "저장 중..."
+                  : "수정됨 (미저장)"}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleSaveDraft}>
+            <FileText className="h-4 w-4" />
+            저장
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleDownload}>
+            <Download className="h-4 w-4" />
+            MD 다운로드
+          </Button>
+          <Button
+            size="sm"
+            onClick={handlePublish}
+            disabled={isPublishing || confluence.publishStatus === "uploaded"}
+          >
+            <Send className="h-4 w-4" />
+            {confluence.publishStatus === "uploaded" ? "게시 완료" : "Confluence 게시"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <MinutesEditor content={minutes.content} onChange={handleContentChange} />
+        </div>
+        <div>
+          <CorrectionPanel corrections={minutes.corrections} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getDemoContent(): string {
+  return `# 2025-01-23 주간회의 회의록
+
+## 참석자
+이상윤, 선설희, 최보연, 유수화, 김정연
+
+## 이상윤
+### AI
+- [진행] GPT 프롬프트 최적화 - 응답 품질 개선
+  - 1/20: 프롬프트 v2 작성 완료
+  - 1/22: 테스트 결과 정확도 15% 향상
+
+### SDK
+- [완료] SDK v2.1 릴리즈 (1/21)
+
+## 선설희
+### HWP
+- [진행] HWP 파서 성능 개선
+  - 대용량 파일 처리 시간 50% 단축 목표
+
+## 회의 결론
+- AI 프롬프트 v2 정식 반영 예정 (이상윤)
+- HWP 파서 성능 테스트 결과 공유 예정 (선설희)
+
+## Action Items
+- [ ] 프롬프트 v2 프로덕션 반영 (이상윤, 1/27)
+- [ ] 성능 테스트 보고서 작성 (선설희, 1/24)
+`;
+}
+
+function getDemoCorrections(): CorrectionItem[] {
+  return [
+    { original: "GPT", corrected: "GPT-4o", category: "terminology" },
+    { original: "SDK v2.1", corrected: "WeeklyRun SDK v2.1", category: "terminology" },
+    { original: "대용량 파일", corrected: "대용량 HWP 파일 (50MB+)", category: "formatting" },
+  ];
+}

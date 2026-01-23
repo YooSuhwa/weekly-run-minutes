@@ -1,0 +1,33 @@
+import { atom } from "jotai";
+
+export type MinutesSaveStatus = "idle" | "saving" | "saved" | "error";
+
+export interface CorrectionItem {
+  original: string;
+  corrected: string;
+  category: "terminology" | "formatting" | "grammar";
+}
+
+export interface MinutesState {
+  content: string;
+  isEdited: boolean;
+  saveStatus: MinutesSaveStatus;
+  corrections: CorrectionItem[];
+  lastSavedAt: string | null;
+}
+
+const initialState: MinutesState = {
+  content: "",
+  isEdited: false,
+  saveStatus: "idle",
+  corrections: [],
+  lastSavedAt: null,
+};
+
+export const minutesAtom = atom<MinutesState>(initialState);
+export const minutesContentAtom = atom(
+  (get) => get(minutesAtom).content,
+  (get, set, content: string) => {
+    set(minutesAtom, { ...get(minutesAtom), content, isEdited: true });
+  },
+);

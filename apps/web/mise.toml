@@ -1,0 +1,27 @@
+[tasks.dev]
+description = "Start development server"
+run = "pnpm dev"
+
+[tasks.build]
+description = "Production build"
+run = "pnpm build"
+
+[tasks.test]
+description = "Run tests"
+run = "pnpm test"
+
+[tasks.lint]
+description = "Lint"
+run = "pnpm lint"
+
+[tasks.format]
+description = "Format"
+run = "pnpm format"
+
+[tasks.typecheck]
+description = "Type check"
+run = "pnpm typecheck"
+
+[tasks."gen:api"]
+description = "Generate API client from OpenAPI"
+run = "pnpm gen:api"
