@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, CheckCircle, FileText, Loader2, Upload } from "lucide-react";
+import { AlertCircle, CheckCircle, FileText, Loader2, Mic, Play, Upload } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import type { MeetingResponse } from "@/lib/api/__generated__/schemas/meetingResponse";
@@ -18,6 +18,21 @@ const statusConfig: Record<MeetingStatus, { label: string; color: string; icon: 
       label: "업무록 로드",
       color: "text-blue-600",
       icon: <FileText className="h-4 w-4" />,
+    },
+    preparing: {
+      label: "준비 중",
+      color: "text-yellow-600",
+      icon: <Loader2 className="h-4 w-4 animate-spin" />,
+    },
+    in_progress: {
+      label: "진행 중",
+      color: "text-green-600",
+      icon: <Play className="h-4 w-4" />,
+    },
+    recording_done: {
+      label: "녹음 완료",
+      color: "text-blue-600",
+      icon: <Mic className="h-4 w-4" />,
     },
     recording_uploaded: {
       label: "녹음 업로드",
@@ -58,6 +73,10 @@ function getMeetingLink(meeting: MeetingResponse): string {
     case "weekly_report_loaded":
     case "recording_uploaded":
       return `/meetings/${meeting.id}/setup`;
+    case "preparing":
+    case "in_progress":
+      return `/meetings/${meeting.id}/live`;
+    case "recording_done":
     case "transcribing":
     case "transcribed":
     case "generating_minutes":

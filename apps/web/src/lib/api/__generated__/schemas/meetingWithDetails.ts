@@ -21,6 +21,7 @@ export interface MeetingWithDetails {
   meeting_date: string;
   title: string;
   status: MeetingStatus;
+  meeting_mode: string;
   error_message: string | null;
   confluence_page_id: string | null;
   confluence_page_url: string | null;

@@ -5,6 +5,7 @@
  * WeeklyRun - AI Meeting Orchestration API
  * OpenAPI spec version: 0.1.0
  */
+import type { MeetingMode } from './meetingMode';
 
 /**
  * Schema for creating a meeting.
@@ -17,4 +18,5 @@ export interface MeetingCreate {
    * @maxLength 200
    */
   title: string;
+  meeting_mode?: MeetingMode;
 }

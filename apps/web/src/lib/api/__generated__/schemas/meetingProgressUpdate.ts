@@ -6,7 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface BodyUploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost {
-  file: Blob;
-  source?: string;
+/**
+ * Request to update meeting progress.
+ */
+export interface MeetingProgressUpdate {
+  current_speaker_index: number;
+  current_item_index: number;
 }

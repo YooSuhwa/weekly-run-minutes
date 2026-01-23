@@ -1530,6 +1530,324 @@
         }
       }
     },
+    "/api/v1/realtime/meetings/{meeting_id}/start": {
+      "post": {
+        "tags": [
+          "realtime-meeting"
+        ],
+        "summary": "Start Realtime Meeting",
+        "description": "Start a realtime meeting.\n\nGenerates question tree from weekly report and transitions to IN_PROGRESS.",
+        "operationId": "start_realtime_meeting_api_v1_realtime_meetings__meeting_id__start_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeetingStartResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/realtime/meetings/{meeting_id}/progress": {
+      "get": {
+        "tags": [
+          "realtime-meeting"
+        ],
+        "summary": "Get Meeting Progress",
+        "description": "Get current meeting progress (orchestration state).",
+        "operationId": "get_meeting_progress_api_v1_realtime_meetings__meeting_id__progress_get",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeetingProgressResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "realtime-meeting"
+        ],
+        "summary": "Update Meeting Progress",
+        "description": "Update meeting progress (current speaker/item).",
+        "operationId": "update_meeting_progress_api_v1_realtime_meetings__meeting_id__progress_put",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MeetingProgressUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeetingProgressResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/realtime/meetings/{meeting_id}/next-item": {
+      "post": {
+        "tags": [
+          "realtime-meeting"
+        ],
+        "summary": "Advance To Next Item",
+        "description": "Advance to the next question item.",
+        "operationId": "advance_to_next_item_api_v1_realtime_meetings__meeting_id__next_item_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeetingProgressResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/realtime/meetings/{meeting_id}/next-speaker": {
+      "post": {
+        "tags": [
+          "realtime-meeting"
+        ],
+        "summary": "Advance To Next Speaker",
+        "description": "Advance to the next speaker.",
+        "operationId": "advance_to_next_speaker_api_v1_realtime_meetings__meeting_id__next_speaker_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeetingProgressResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/realtime/meetings/{meeting_id}/end": {
+      "post": {
+        "tags": [
+          "realtime-meeting"
+        ],
+        "summary": "End Realtime Meeting",
+        "description": "End a realtime meeting.\n\nTransitions to RECORDING_DONE, ready for recording upload and STT.",
+        "operationId": "end_realtime_meeting_api_v1_realtime_meetings__meeting_id__end_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeetingEndResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/realtime/meetings/{meeting_id}/question-tree": {
+      "get": {
+        "tags": [
+          "realtime-meeting"
+        ],
+        "summary": "Get Question Tree",
+        "description": "Get the question tree for a meeting.",
+        "operationId": "get_question_tree_api_v1_realtime_meetings__meeting_id__question_tree_get",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Question Tree Api V1 Realtime Meetings  Meeting Id  Question Tree Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/": {
       "get": {
         "summary": "Root",
@@ -1560,6 +1878,11 @@
             "type": "string",
             "format": "binary",
             "title": "File"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "upload"
           }
         },
         "type": "object",
@@ -1605,6 +1928,39 @@
           "category": {
             "type": "string",
             "title": "Category"
+          },
+          "paragraph_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paragraph Index"
+          },
+          "start_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Offset"
+          },
+          "end_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Offset"
           }
         },
         "type": "object",
@@ -1678,6 +2034,10 @@
             "maxLength": 200,
             "minLength": 1,
             "title": "Title"
+          },
+          "meeting_mode": {
+            "$ref": "#/components/schemas/MeetingMode",
+            "default": "upload"
           }
         },
         "type": "object",
@@ -1688,6 +2048,26 @@
         ],
         "title": "MeetingCreate",
         "description": "Schema for creating a meeting."
+      },
+      "MeetingEndResponse": {
+        "properties": {
+          "meeting_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Meeting Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "meeting_id",
+          "status"
+        ],
+        "title": "MeetingEndResponse",
+        "description": "Response after ending a realtime meeting."
       },
       "MeetingMinutesInfo": {
         "properties": {
@@ -1719,6 +2099,91 @@
         ],
         "title": "MeetingMinutesInfo",
         "description": "Schema for meeting minutes info in meeting response."
+      },
+      "MeetingMode": {
+        "type": "string",
+        "enum": [
+          "upload",
+          "realtime"
+        ],
+        "title": "MeetingMode",
+        "description": "Meeting mode enum."
+      },
+      "MeetingProgressResponse": {
+        "properties": {
+          "meeting_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Meeting Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "current_speaker_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Speaker Index"
+          },
+          "current_item_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Item Index"
+          },
+          "question_tree": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Tree"
+          }
+        },
+        "type": "object",
+        "required": [
+          "meeting_id",
+          "status",
+          "current_speaker_index",
+          "current_item_index",
+          "question_tree"
+        ],
+        "title": "MeetingProgressResponse",
+        "description": "Response with current meeting progress."
+      },
+      "MeetingProgressUpdate": {
+        "properties": {
+          "current_speaker_index": {
+            "type": "integer",
+            "title": "Current Speaker Index"
+          },
+          "current_item_index": {
+            "type": "integer",
+            "title": "Current Item Index"
+          }
+        },
+        "type": "object",
+        "required": [
+          "current_speaker_index",
+          "current_item_index"
+        ],
+        "title": "MeetingProgressUpdate",
+        "description": "Request to update meeting progress."
       },
       "MeetingResponse": {
         "properties": {
@@ -1753,6 +2218,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/MeetingStatus"
+          },
+          "meeting_mode": {
+            "type": "string",
+            "title": "Meeting Mode"
           },
           "error_message": {
             "anyOf": [
@@ -1797,6 +2266,7 @@
           "meeting_date",
           "title",
           "status",
+          "meeting_mode",
           "error_message",
           "confluence_page_id",
           "confluence_page_url"
@@ -1804,11 +2274,40 @@
         "title": "MeetingResponse",
         "description": "Schema for meeting response."
       },
+      "MeetingStartResponse": {
+        "properties": {
+          "meeting_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Meeting Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "question_tree": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Question Tree"
+          }
+        },
+        "type": "object",
+        "required": [
+          "meeting_id",
+          "status",
+          "question_tree"
+        ],
+        "title": "MeetingStartResponse",
+        "description": "Response after starting a realtime meeting."
+      },
       "MeetingStatus": {
         "type": "string",
         "enum": [
           "created",
           "weekly_report_loaded",
+          "preparing",
+          "in_progress",
+          "recording_done",
           "recording_uploaded",
           "transcribing",
           "transcribed",
@@ -1877,6 +2376,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/MeetingStatus"
+          },
+          "meeting_mode": {
+            "type": "string",
+            "title": "Meeting Mode"
           },
           "error_message": {
             "anyOf": [
@@ -1951,6 +2454,7 @@
           "meeting_date",
           "title",
           "status",
+          "meeting_mode",
           "error_message",
           "confluence_page_id",
           "confluence_page_url",
@@ -2173,6 +2677,10 @@
               }
             ],
             "title": "Duration Seconds"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
           }
         },
         "type": "object",
@@ -2183,7 +2691,8 @@
           "stored_filename",
           "file_size",
           "mime_type",
-          "duration_seconds"
+          "duration_seconds",
+          "source"
         ],
         "title": "RecordingResponse",
         "description": "Recording response model."

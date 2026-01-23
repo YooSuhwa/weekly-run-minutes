@@ -6,7 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface BodyUploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost {
-  file: Blob;
-  source?: string;
+/**
+ * Response after ending a realtime meeting.
+ */
+export interface MeetingEndResponse {
+  meeting_id: string;
+  status: string;
 }

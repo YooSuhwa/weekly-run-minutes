@@ -40,6 +40,9 @@ export default function MinutesPage() {
           original: c.original,
           corrected: c.corrected,
           category: c.category as CorrectionItem["category"],
+          paragraphIndex: c.paragraph_index ?? null,
+          startOffset: c.start_offset ?? null,
+          endOffset: c.end_offset ?? null,
         })),
       }));
     } else if (minutesError) {
@@ -229,8 +232,29 @@ function getDemoContent(): string {
 
 function getDemoCorrections(): CorrectionItem[] {
   return [
-    { original: "GPT", corrected: "GPT-4o", category: "terminology" },
-    { original: "SDK v2.1", corrected: "WeeklyRun SDK v2.1", category: "terminology" },
-    { original: "대용량 파일", corrected: "대용량 HWP 파일 (50MB+)", category: "formatting" },
+    {
+      original: "GPT",
+      corrected: "GPT-4o",
+      category: "terminology",
+      paragraphIndex: null,
+      startOffset: null,
+      endOffset: null,
+    },
+    {
+      original: "SDK v2.1",
+      corrected: "WeeklyRun SDK v2.1",
+      category: "terminology",
+      paragraphIndex: null,
+      startOffset: null,
+      endOffset: null,
+    },
+    {
+      original: "대용량 파일",
+      corrected: "대용량 HWP 파일 (50MB+)",
+      category: "formatting",
+      paragraphIndex: null,
+      startOffset: null,
+      endOffset: null,
+    },
   ];
 }

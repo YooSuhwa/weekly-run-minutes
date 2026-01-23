@@ -13,4 +13,7 @@ export interface CorrectionItemResponse {
   original: string;
   corrected: string;
   category: string;
+  paragraph_index?: number | null;
+  start_offset?: number | null;
+  end_offset?: number | null;
 }

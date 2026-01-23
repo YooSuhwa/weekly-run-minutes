@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 
 interface CorrectionPanelProps {
   corrections: CorrectionItem[];
+  onCorrectionClick?: (correction: CorrectionItem) => void;
 }
 
 const categoryLabels: Record<CorrectionItem["category"], string> = {
@@ -21,7 +22,7 @@ const categoryColors: Record<CorrectionItem["category"], string> = {
   grammar: "bg-yellow-50 text-yellow-700 border-yellow-200",
 };
 
-export function CorrectionPanel({ corrections }: CorrectionPanelProps) {
+export function CorrectionPanel({ corrections, onCorrectionClick }: CorrectionPanelProps) {
   if (corrections.length === 0) {
     return (
       <Card>
@@ -52,9 +53,15 @@ export function CorrectionPanel({ corrections }: CorrectionPanelProps) {
       <CardContent>
         <div className="space-y-3">
           {corrections.map((item) => (
-            <div
+            <button
+              type="button"
               key={`${item.category}-${item.original}`}
-              className="rounded-lg border border-border p-3"
+              className={cn(
+                "w-full text-left rounded-lg border border-border p-3 transition-colors",
+                item.paragraphIndex !== null && "hover:border-primary/50 cursor-pointer",
+              )}
+              onClick={() => item.paragraphIndex !== null && onCorrectionClick?.(item)}
+              disabled={item.paragraphIndex === null}
             >
               <div className="mb-1.5 flex items-center gap-2">
                 <span
@@ -65,12 +72,15 @@ export function CorrectionPanel({ corrections }: CorrectionPanelProps) {
                 >
                   {categoryLabels[item.category]}
                 </span>
+                {item.paragraphIndex !== null && (
+                  <span className="text-xs text-muted-foreground">L{item.paragraphIndex + 1}</span>
+                )}
               </div>
               <div className="space-y-1 text-sm">
                 <p className="text-muted-foreground line-through">{item.original}</p>
                 <p className="font-medium">{item.corrected}</p>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </CardContent>

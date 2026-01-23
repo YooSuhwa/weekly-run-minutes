@@ -6,6 +6,9 @@ export interface CorrectionItem {
   original: string;
   corrected: string;
   category: "terminology" | "formatting" | "grammar";
+  paragraphIndex: number | null;
+  startOffset: number | null;
+  endOffset: number | null;
 }
 
 export interface MinutesState {

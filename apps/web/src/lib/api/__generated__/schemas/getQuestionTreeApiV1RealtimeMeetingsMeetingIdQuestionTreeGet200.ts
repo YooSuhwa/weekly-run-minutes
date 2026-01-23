@@ -6,7 +6,4 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface BodyUploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost {
-  file: Blob;
-  source?: string;
-}
+export type GetQuestionTreeApiV1RealtimeMeetingsMeetingIdQuestionTreeGet200 = { [key: string]: unknown };

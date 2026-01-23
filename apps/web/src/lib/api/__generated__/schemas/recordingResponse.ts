@@ -17,4 +17,5 @@ export interface RecordingResponse {
   file_size: number;
   mime_type: string;
   duration_seconds: number | null;
+  source: string;
 }

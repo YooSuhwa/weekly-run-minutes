@@ -15,6 +15,9 @@ export type MeetingStatus = typeof MeetingStatus[keyof typeof MeetingStatus];
 export const MeetingStatus = {
   created: 'created',
   weekly_report_loaded: 'weekly_report_loaded',
+  preparing: 'preparing',
+  in_progress: 'in_progress',
+  recording_done: 'recording_done',
   recording_uploaded: 'recording_uploaded',
   transcribing: 'transcribing',
   transcribed: 'transcribed',

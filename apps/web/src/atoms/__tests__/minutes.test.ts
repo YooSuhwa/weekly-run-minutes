@@ -35,7 +35,16 @@ describe("minutes atoms", () => {
         content: "# Meeting Minutes",
         isEdited: true,
         saveStatus: "saving",
-        corrections: [{ original: "teh", corrected: "the", category: "grammar" }],
+        corrections: [
+          {
+            original: "teh",
+            corrected: "the",
+            category: "grammar",
+            paragraphIndex: null,
+            startOffset: null,
+            endOffset: null,
+          },
+        ],
         lastSavedAt: "2024-01-15T10:00:00Z",
       });
       expect(store.get(minutesAtom).content).toBe("# Meeting Minutes");
@@ -64,7 +73,16 @@ describe("minutes atoms", () => {
         content: "",
         isEdited: false,
         saveStatus: "saved",
-        corrections: [{ original: "SDK", corrected: "SDK", category: "terminology" }],
+        corrections: [
+          {
+            original: "SDK",
+            corrected: "SDK",
+            category: "terminology",
+            paragraphIndex: null,
+            startOffset: null,
+            endOffset: null,
+          },
+        ],
         lastSavedAt: "2024-01-15T10:00:00Z",
       });
       store.set(minutesContentAtom, "New content");

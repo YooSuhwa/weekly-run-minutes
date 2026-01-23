@@ -50,6 +50,9 @@ export const uploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost = (
       
       const formData = new FormData();
 formData.append(`file`, bodyUploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost.file);
+if(bodyUploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost.source !== undefined) {
+ formData.append(`source`, bodyUploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost.source);
+ }
 
       return apiClient<RecordingResponse>(
       {url: `/api/v1/recordings/meetings/${meetingId}/recording`, method: 'POST',

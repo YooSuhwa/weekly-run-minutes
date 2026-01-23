@@ -1,8 +1,13 @@
 import { atom } from "jotai";
 
+export type MeetingMode = "upload" | "realtime";
+
 export type MeetingStatus =
   | "created"
   | "weekly_report_loaded"
+  | "preparing"
+  | "in_progress"
+  | "recording_done"
   | "recording_uploaded"
   | "transcribing"
   | "transcribed"
@@ -17,6 +22,7 @@ export interface Meeting {
   meetingDate: string;
   title: string;
   status: MeetingStatus;
+  meetingMode: MeetingMode;
   errorMessage: string | null;
   confluencePageId: string | null;
   confluencePageUrl: string | null;
