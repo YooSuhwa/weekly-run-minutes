@@ -1,6 +1,7 @@
 "use client";
 
 import { Sparkles } from "lucide-react";
+import { memo } from "react";
 import type { CorrectionItem } from "@/atoms/minutes";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -22,7 +23,10 @@ const categoryColors: Record<CorrectionItem["category"], string> = {
   grammar: "bg-yellow-50 text-yellow-700 border-yellow-200",
 };
 
-export function CorrectionPanel({ corrections, onCorrectionClick }: CorrectionPanelProps) {
+export const CorrectionPanel = memo(function CorrectionPanel({
+  corrections,
+  onCorrectionClick,
+}: CorrectionPanelProps) {
   if (corrections.length === 0) {
     return (
       <Card>
@@ -86,4 +90,4 @@ export function CorrectionPanel({ corrections, onCorrectionClick }: CorrectionPa
       </CardContent>
     </Card>
   );
-}
+});

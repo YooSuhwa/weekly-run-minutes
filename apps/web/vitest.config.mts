@@ -10,13 +10,20 @@ export default defineConfig({
     },
   },
   test: {
-    environment: "jsdom",
+    environment: "happy-dom",
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
     coverage: {
-      reporter: ["text", "json", "html"],
+      provider: "v8",
+      reporter: ["text", "text-summary"],
       include: ["src/**/*.{ts,tsx}"],
-      exclude: ["src/test/**", "src/lib/api/__generated__/**"],
+      exclude: ["src/**/__tests__/**", "src/test/**", "src/lib/api/__generated__/**"],
+      thresholds: {
+        statements: 80,
+        branches: 70,
+        functions: 70,
+        lines: 80,
+      },
     },
   },
 });

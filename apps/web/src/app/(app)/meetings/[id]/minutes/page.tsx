@@ -26,6 +26,7 @@ export default function MinutesPage() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [activeCorrectionIndex, setActiveCorrectionIndex] = useState<number | null>(null);
   const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const updateMutateRef = useRef<typeof updateMinutes.mutate>(null);
 
   // Fetch minutes via generated hook
   const { data: minutesData, error: minutesError } =
@@ -72,6 +73,8 @@ export default function MinutesPage() {
     },
   });
 
+  updateMutateRef.current = updateMinutes.mutate;
+
   // Publish mutation
   const publishMinutes = usePublishMinutesToConfluenceApiV1MinutesMeetingsMeetingIdPublishPost({
     mutation: {
@@ -109,7 +112,7 @@ export default function MinutesPage() {
     if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
 
     autoSaveRef.current = setTimeout(() => {
-      updateMinutes.mutate({
+      updateMutateRef.current?.({
         meetingId,
         data: { content_markdown: minutes.content },
       });
@@ -118,18 +121,18 @@ export default function MinutesPage() {
     return () => {
       if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
     };
-  }, [minutes.content, minutes.isEdited, meetingId, updateMinutes]);
+  }, [minutes.content, minutes.isEdited, meetingId]);
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = useCallback(() => {
     setMinutes((prev) => ({ ...prev, saveStatus: "saving" }));
-    updateMinutes.mutate({
+    updateMutateRef.current?.({
       meetingId,
       data: { content_markdown: minutes.content },
     });
     toast.success("저장되었습니다");
-  };
+  }, [meetingId, minutes.content, setMinutes, toast]);
 
-  const handleDownload = () => {
+  const handleDownload = useCallback(() => {
     const blob = new Blob([minutes.content], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -138,13 +141,13 @@ export default function MinutesPage() {
     a.click();
     URL.revokeObjectURL(url);
     toast.success("다운로드 완료");
-  };
+  }, [meetingId, minutes.content, toast]);
 
-  const handlePublish = () => {
+  const handlePublish = useCallback(() => {
     setIsPublishing(true);
     setConfluence((prev) => ({ ...prev, publishStatus: "uploading" }));
     publishMinutes.mutate({ meetingId });
-  };
+  }, [meetingId, publishMinutes, setConfluence]);
 
   const handleContentChange = useCallback(
     (content: string) => {
@@ -153,13 +156,13 @@ export default function MinutesPage() {
     [setMinutes],
   );
 
-  const handleCorrectionClick = useCallback(
-    (correction: CorrectionItem) => {
-      const index = minutes.corrections.indexOf(correction);
-      setActiveCorrectionIndex(index >= 0 ? index : null);
-    },
-    [minutes.corrections],
-  );
+  const correctionsRef = useRef(minutes.corrections);
+  correctionsRef.current = minutes.corrections;
+
+  const handleCorrectionClick = useCallback((correction: CorrectionItem) => {
+    const index = correctionsRef.current.indexOf(correction);
+    setActiveCorrectionIndex(index >= 0 ? index : null);
+  }, []);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
