@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import Field
 
-from src.models.meeting import MeetingStatus
+from src.models.meeting import MeetingMode, MeetingStatus
 from src.schemas.common import BaseSchema, IDSchema, TimestampSchema
 
 
@@ -15,6 +15,7 @@ class MeetingCreate(BaseSchema):
     team_id: UUID
     meeting_date: date
     title: str = Field(..., min_length=1, max_length=200)
+    meeting_mode: MeetingMode = MeetingMode.UPLOAD
 
 
 class MeetingStatusUpdate(BaseSchema):
@@ -57,6 +58,7 @@ class MeetingResponse(IDSchema, TimestampSchema):
     meeting_date: date
     title: str
     status: MeetingStatus
+    meeting_mode: str
     error_message: str | None
     confluence_page_id: str | None
     confluence_page_url: str | None

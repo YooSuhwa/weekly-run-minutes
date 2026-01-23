@@ -59,6 +59,7 @@ async def create_meeting(
         meeting_date=data.meeting_date,
         title=data.title,
         status=MeetingStatus.CREATED,
+        meeting_mode=data.meeting_mode,
     )
     db.add(meeting)
     await db.commit()

@@ -1,5 +1,6 @@
 """Recording model for audio files."""
 
+from enum import Enum
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -10,6 +11,13 @@ from src.models.base import BaseModel
 
 if TYPE_CHECKING:
     from src.models.meeting import Meeting
+
+
+class RecordingSource(str, Enum):
+    """Recording source enum."""
+
+    UPLOAD = "upload"  # 파일 업로드
+    BROWSER = "browser"  # 브라우저 MediaRecorder
 
 
 class Recording(BaseModel):
@@ -30,6 +38,9 @@ class Recording(BaseModel):
     file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
     duration_seconds: Mapped[float | None] = mapped_column(nullable=True)
+    source: Mapped[str] = mapped_column(
+        String(20), default=RecordingSource.UPLOAD, nullable=False
+    )
 
     # Relationships
     meeting: Mapped["Meeting"] = relationship("Meeting", back_populates="recording")

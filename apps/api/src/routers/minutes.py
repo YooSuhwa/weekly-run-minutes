@@ -13,6 +13,7 @@ from src.lib.database import async_session_factory
 from src.lib.dependencies import get_db
 from src.lib.logging import get_logger
 from src.models import Meeting, MeetingMinutes, MeetingStatus, Transcript
+from src.models.team import Team
 from src.services.confluence import ConfluenceError, ConfluenceService
 from src.services.minutes_generator import MinutesGenerationError, MinutesGeneratorService
 from src.services.weekly_report_parser import WeeklyReportParser
@@ -80,7 +81,7 @@ async def generate_minutes_task(meeting_id: UUID) -> None:
                 select(Meeting)
                 .where(Meeting.id == meeting_id)
                 .options(
-                    selectinload(Meeting.team).selectinload("members"),
+                    selectinload(Meeting.team).selectinload(Team.members),
                     selectinload(Meeting.weekly_report),
                 )
             )

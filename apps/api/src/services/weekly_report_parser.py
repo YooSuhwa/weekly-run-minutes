@@ -230,6 +230,31 @@ class WeeklyReportParser:
             ],
         }
 
+    def dict_to_parsed_report(self, parsed_data: dict) -> ParsedWeeklyReport:
+        """Convert stored dict back to ParsedWeeklyReport dataclass.
+
+        Args:
+            parsed_data: Dict from DB (WeeklyReport.parsed_data)
+
+        Returns:
+            ParsedWeeklyReport with structured data
+        """
+        members = []
+        for member_dict in parsed_data.get("team_members", []):
+            categories = []
+            for cat_dict in member_dict.get("categories", []):
+                tasks = [
+                    TaskItem(
+                        status=t["status"],
+                        title=t["title"],
+                        details=t.get("details", []),
+                    )
+                    for t in cat_dict.get("tasks", [])
+                ]
+                categories.append(TaskCategory(name=cat_dict["name"], tasks=tasks))
+            members.append(MemberTasks(name=member_dict["name"], categories=categories))
+        return ParsedWeeklyReport(team_members=members)
+
     def get_member_summary(self, parsed_data: dict, member_name: str) -> str:
         """Get a text summary of a member's tasks for AI context.
 
