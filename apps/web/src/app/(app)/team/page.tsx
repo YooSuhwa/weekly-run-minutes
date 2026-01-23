@@ -7,6 +7,13 @@ import { type TeamMember, teamMembersAtom } from "@/atoms/team";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
+import {
+  useAddTeamMemberApiV1TeamsTeamIdMembersPost,
+  useGetTeamApiV1TeamsTeamIdGet,
+  useListTeamsApiV1TeamsGet,
+  useRemoveTeamMemberApiV1TeamsTeamIdMembersMemberIdDelete,
+  useUpdateTeamMemberApiV1TeamsTeamIdMembersMemberIdPatch,
+} from "@/lib/api/__generated__/teams/teams";
 
 export default function TeamPage() {
   const toast = useToast();
@@ -15,139 +22,156 @@ export default function TeamPage() {
   const [editName, setEditName] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState("");
-  const [teamId, setTeamId] = useState<string | null>(null);
 
+  // Fetch teams list
+  const { data: teams } = useListTeamsApiV1TeamsGet();
+  const teamId = teams?.[0]?.id ?? "";
+
+  // Fetch team details with members
+  const { data: teamData } = useGetTeamApiV1TeamsTeamIdGet(teamId, {
+    query: { enabled: !!teamId },
+  });
+
+  // Sync fetched team members to atom
   useEffect(() => {
-    async function fetchTeam() {
-      try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/teams`,
-        );
-        if (res.ok) {
-          const teams = await res.json();
-          if (teams.length > 0) {
-            setTeamId(teams[0].id);
-            const teamRes = await fetch(
-              `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/teams/${teams[0].id}`,
-            );
-            if (teamRes.ok) {
-              const team = await teamRes.json();
-              setMembers(
-                team.members?.map(
-                  (m: {
-                    id: string;
-                    name: string;
-                    presentation_order: number;
-                    is_active: boolean;
-                  }) => ({
-                    id: m.id,
-                    name: m.name,
-                    presentationOrder: m.presentation_order,
-                    isActive: m.is_active,
-                    teamId: team.id,
-                  }),
-                ) || [],
-              );
-            }
-          }
-        }
-      } catch {
-        // Fallback data for development
-        setMembers([
-          { id: "1", name: "이상윤", presentationOrder: 1, isActive: true, teamId: "" },
-          { id: "2", name: "선설희", presentationOrder: 2, isActive: true, teamId: "" },
-          { id: "3", name: "최보연", presentationOrder: 3, isActive: true, teamId: "" },
-          { id: "4", name: "유수화", presentationOrder: 4, isActive: true, teamId: "" },
-          { id: "5", name: "김정연", presentationOrder: 5, isActive: true, teamId: "" },
-        ]);
-      }
+    if (teamData?.members) {
+      setMembers(
+        teamData.members.map((m) => ({
+          id: m.id,
+          name: m.name,
+          presentationOrder: m.presentation_order,
+          isActive: m.is_active,
+          teamId: m.team_id,
+        })),
+      );
     }
-    fetchTeam();
-  }, [setMembers]);
+  }, [teamData, setMembers]);
+
+  // Mutations
+  const addMember = useAddTeamMemberApiV1TeamsTeamIdMembersPost({
+    mutation: {
+      onSuccess: (data) => {
+        const newMember: TeamMember = {
+          id: data.id,
+          name: data.name,
+          presentationOrder: data.presentation_order,
+          isActive: data.is_active,
+          teamId: data.team_id,
+        };
+        setMembers((prev) => [...prev, newMember]);
+        setNewName("");
+        setIsAdding(false);
+        toast.success("추가되었습니다");
+      },
+      onError: () => {
+        // Offline fallback: add locally
+        const localMember: TeamMember = {
+          id: crypto.randomUUID(),
+          name: newName.trim(),
+          presentationOrder: members.length + 1,
+          isActive: true,
+          teamId: teamId || "",
+        };
+        setMembers((prev) => [...prev, localMember]);
+        setNewName("");
+        setIsAdding(false);
+        toast.success("추가되었습니다");
+      },
+    },
+  });
+
+  const updateMember = useUpdateTeamMemberApiV1TeamsTeamIdMembersMemberIdPatch({
+    mutation: {
+      onSuccess: () => {
+        setMembers((prev) =>
+          prev.map((m) => (m.id === editingId ? { ...m, name: editName.trim() } : m)),
+        );
+        setEditingId(null);
+        toast.success("수정되었습니다");
+      },
+      onError: () => {
+        // Offline fallback: update locally
+        setMembers((prev) =>
+          prev.map((m) => (m.id === editingId ? { ...m, name: editName.trim() } : m)),
+        );
+        setEditingId(null);
+        toast.success("수정되었습니다");
+      },
+    },
+  });
+
+  const removeMember = useRemoveTeamMemberApiV1TeamsTeamIdMembersMemberIdDelete({
+    mutation: {
+      onSuccess: (_data, variables) => {
+        setMembers((prev) => prev.filter((m) => m.id !== variables.memberId));
+        toast.success("삭제되었습니다");
+      },
+      onError: (_error, variables) => {
+        // Offline fallback: remove locally
+        setMembers((prev) => prev.filter((m) => m.id !== variables.memberId));
+        toast.success("삭제되었습니다");
+      },
+    },
+  });
 
   const handleEdit = (member: TeamMember) => {
     setEditingId(member.id);
     setEditName(member.name);
   };
 
-  const handleSaveEdit = async () => {
+  const handleSaveEdit = () => {
     if (!editingId || !editName.trim()) return;
 
-    try {
-      if (teamId) {
-        await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/teams/${teamId}/members/${editingId}`,
-          {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: editName.trim() }),
-          },
-        );
-      }
-    } catch {
-      // Offline mode
+    if (teamId) {
+      updateMember.mutate({
+        teamId,
+        memberId: editingId,
+        data: { name: editName.trim() },
+      });
+    } else {
+      // No team, update locally
+      setMembers((prev) =>
+        prev.map((m) => (m.id === editingId ? { ...m, name: editName.trim() } : m)),
+      );
+      setEditingId(null);
+      toast.success("수정되었습니다");
     }
-
-    setMembers((prev) =>
-      prev.map((m) => (m.id === editingId ? { ...m, name: editName.trim() } : m)),
-    );
-    setEditingId(null);
-    toast.success("수정되었습니다");
   };
 
-  const handleDelete = async (id: string) => {
-    try {
-      if (teamId) {
-        await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/teams/${teamId}/members/${id}`,
-          { method: "DELETE" },
-        );
-      }
-    } catch {
-      // Offline mode
+  const handleDelete = (id: string) => {
+    if (teamId) {
+      removeMember.mutate({ teamId, memberId: id });
+    } else {
+      setMembers((prev) => prev.filter((m) => m.id !== id));
+      toast.success("삭제되었습니다");
     }
-
-    setMembers((prev) => prev.filter((m) => m.id !== id));
-    toast.success("삭제되었습니다");
   };
 
-  const handleAdd = async () => {
+  const handleAdd = () => {
     if (!newName.trim()) return;
 
-    const newMember: TeamMember = {
-      id: crypto.randomUUID(),
-      name: newName.trim(),
-      presentationOrder: members.length + 1,
-      isActive: true,
-      teamId: teamId || "",
-    };
-
-    try {
-      if (teamId) {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/teams/${teamId}/members`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name: newName.trim(),
-              presentation_order: members.length + 1,
-            }),
-          },
-        );
-        if (res.ok) {
-          const data = await res.json();
-          newMember.id = data.id;
-        }
-      }
-    } catch {
-      // Offline mode
+    if (teamId) {
+      addMember.mutate({
+        teamId,
+        data: {
+          name: newName.trim(),
+          presentation_order: members.length + 1,
+        },
+      });
+    } else {
+      // No team, add locally
+      const localMember: TeamMember = {
+        id: crypto.randomUUID(),
+        name: newName.trim(),
+        presentationOrder: members.length + 1,
+        isActive: true,
+        teamId: "",
+      };
+      setMembers((prev) => [...prev, localMember]);
+      setNewName("");
+      setIsAdding(false);
+      toast.success("추가되었습니다");
     }
-
-    setMembers((prev) => [...prev, newMember]);
-    setNewName("");
-    setIsAdding(false);
-    toast.success("추가되었습니다");
   };
 
   return (

@@ -2,8 +2,9 @@
 
 import { AlertCircle, CheckCircle, FileText, Loader2, Upload } from "lucide-react";
 import Link from "next/link";
-import type { Meeting, MeetingStatus } from "@/atoms/meeting";
 import { Card, CardContent } from "@/components/ui/card";
+import type { MeetingResponse } from "@/lib/api/__generated__/schemas/meetingResponse";
+import type { MeetingStatus } from "@/lib/api/__generated__/schemas/meetingStatus";
 import { cn, formatDate } from "@/lib/utils";
 
 const statusConfig: Record<MeetingStatus, { label: string; color: string; icon: React.ReactNode }> =
@@ -51,7 +52,7 @@ const statusConfig: Record<MeetingStatus, { label: string; color: string; icon: 
     failed: { label: "실패", color: "text-destructive", icon: <AlertCircle className="h-4 w-4" /> },
   };
 
-function getMeetingLink(meeting: Meeting): string {
+function getMeetingLink(meeting: MeetingResponse): string {
   switch (meeting.status) {
     case "created":
     case "weekly_report_loaded":
@@ -71,7 +72,7 @@ function getMeetingLink(meeting: Meeting): string {
   }
 }
 
-export function MeetingCard({ meeting }: { meeting: Meeting }) {
+export function MeetingCard({ meeting }: { meeting: MeetingResponse }) {
   const config = statusConfig[meeting.status];
   const href = getMeetingLink(meeting);
 
@@ -83,7 +84,7 @@ export function MeetingCard({ meeting }: { meeting: Meeting }) {
             <div className={cn("flex items-center gap-2", config.color)}>{config.icon}</div>
             <div>
               <p className="font-medium">{meeting.title}</p>
-              <p className="text-xs text-muted-foreground">{formatDate(meeting.meetingDate)}</p>
+              <p className="text-xs text-muted-foreground">{formatDate(meeting.meeting_date)}</p>
             </div>
           </div>
           <span

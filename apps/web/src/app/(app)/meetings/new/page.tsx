@@ -7,6 +7,7 @@ import { useState } from "react";
 import { meetingModeAtom } from "@/atoms/meeting";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useCreateMeetingApiV1MeetingsPost } from "@/lib/api/__generated__/meetings/meetings";
 import { cn } from "@/lib/utils";
 
 export default function NewMeetingPage() {
@@ -14,32 +15,28 @@ export default function NewMeetingPage() {
   const setMode = useSetAtom(meetingModeAtom);
   const [selectedMode, setSelectedMode] = useState<"upload" | "realtime">("upload");
 
-  const handleStart = async () => {
+  const createMeeting = useCreateMeetingApiV1MeetingsPost({
+    mutation: {
+      onSuccess: (data) => {
+        router.push(`/meetings/${data.id}/setup`);
+      },
+      onError: () => {
+        // Fallback: navigate with temp ID for development
+        router.push("/meetings/new-temp/setup");
+      },
+    },
+  });
+
+  const handleStart = () => {
     setMode(selectedMode);
 
-    // Create meeting via API
-    try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/meetings`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            team_id: "00000000-0000-0000-0000-000000000001", // TODO: Get from current team
-            meeting_date: new Date().toISOString().split("T")[0],
-            title: `${new Date().toLocaleDateString("ko-KR")} 주간회의`,
-          }),
-        },
-      );
-
-      if (res.ok) {
-        const meeting = await res.json();
-        router.push(`/meetings/${meeting.id}/setup`);
-      }
-    } catch {
-      // Fallback: navigate with temp ID for development
-      router.push("/meetings/new-temp/setup");
-    }
+    createMeeting.mutate({
+      data: {
+        team_id: "00000000-0000-0000-0000-000000000001", // TODO: Get from current team
+        meeting_date: new Date().toISOString().split("T")[0],
+        title: `${new Date().toLocaleDateString("ko-KR")} 주간회의`,
+      },
+    });
   };
 
   return (
@@ -84,8 +81,8 @@ export default function NewMeetingPage() {
       </div>
 
       <div className="mt-8 flex justify-end">
-        <Button onClick={handleStart} size="lg">
-          다음
+        <Button onClick={handleStart} size="lg" disabled={createMeeting.isPending}>
+          {createMeeting.isPending ? "생성 중..." : "다음"}
         </Button>
       </div>
     </div>

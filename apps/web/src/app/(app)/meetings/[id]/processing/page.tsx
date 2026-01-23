@@ -3,11 +3,12 @@
 import { useAtom } from "jotai";
 import { CheckCircle } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { type SttStep, sttAtom } from "@/atoms/stt";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { useToast } from "@/components/ui/toast";
 import { Weeky } from "@/components/weeky/weeky";
+import { useGetMeetingProgressApiV1MeetingsMeetingIdProgressGet } from "@/lib/api/__generated__/meetings/meetings";
 import { cn } from "@/lib/utils";
 
 const steps: { key: SttStep; label: string; description: string }[] = [
@@ -26,61 +27,9 @@ export default function ProcessingPage() {
   const toast = useToast();
   const meetingId = params.id as string;
   const [stt, setStt] = useAtom(sttAtom);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasCompleted = useRef(false);
 
-  const pollProgress = useCallback(async () => {
-    try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/meetings/${meetingId}/progress`,
-      );
-
-      if (!res.ok) return;
-
-      const data = await res.json();
-
-      if (data.status === "transcribing") {
-        setStt((prev) => ({ ...prev, status: "processing", currentStep: "voice", progress: 33 }));
-      } else if (data.status === "transcribed") {
-        setStt((prev) => ({
-          ...prev,
-          status: "processing",
-          currentStep: "terminology",
-          progress: 66,
-          segmentsCount: data.segments_count || 0,
-        }));
-      } else if (data.status === "generating_minutes") {
-        setStt((prev) => ({ ...prev, currentStep: "formatting", progress: 80 }));
-      } else if (data.status === "draft_ready") {
-        setStt((prev) => ({ ...prev, status: "completed", progress: 100 }));
-        if (pollingRef.current) clearInterval(pollingRef.current);
-        toast.success("회의록 생성이 완료되었습니다!");
-        setTimeout(() => router.push(`/meetings/${meetingId}/minutes`), 1500);
-      } else if (data.status === "failed") {
-        setStt((prev) => ({
-          ...prev,
-          status: "error",
-          errorMessage: data.error_message || "처리 중 오류가 발생했습니다",
-        }));
-        if (pollingRef.current) clearInterval(pollingRef.current);
-        toast.error(data.error_message || "처리 실패");
-      }
-    } catch {
-      // Demo mode: simulate progress
-      setStt((prev) => {
-        if (prev.progress >= 100) {
-          if (pollingRef.current) clearInterval(pollingRef.current);
-          setTimeout(() => router.push(`/meetings/${meetingId}/minutes`), 1000);
-          return { ...prev, status: "completed", progress: 100 };
-        }
-        const newProgress = Math.min(prev.progress + 10, 100);
-        let step: SttStep = "voice";
-        if (newProgress > 33) step = "terminology";
-        if (newProgress > 66) step = "formatting";
-        return { ...prev, status: "processing", currentStep: step, progress: newProgress };
-      });
-    }
-  }, [meetingId, router, setStt, toast]);
-
+  // Initialize STT state on mount
   useEffect(() => {
     setStt({
       status: "processing",
@@ -90,13 +39,48 @@ export default function ProcessingPage() {
       durationSeconds: null,
       errorMessage: null,
     });
+  }, [setStt]);
 
-    pollingRef.current = setInterval(pollProgress, 3000);
+  // Use TanStack Query with refetchInterval for polling
+  const { data: progressData } = useGetMeetingProgressApiV1MeetingsMeetingIdProgressGet(meetingId, {
+    query: {
+      refetchInterval: stt.status === "completed" || stt.status === "error" ? false : 3000,
+      enabled: stt.status !== "completed" && stt.status !== "error",
+    },
+  });
 
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
-  }, [pollProgress, setStt]);
+  // Process progress data when it changes
+  useEffect(() => {
+    if (!progressData || hasCompleted.current) return;
+
+    const status = progressData.status as string | undefined;
+
+    if (status === "transcribing") {
+      setStt((prev) => ({ ...prev, status: "processing", currentStep: "voice", progress: 33 }));
+    } else if (status === "transcribed") {
+      setStt((prev) => ({
+        ...prev,
+        status: "processing",
+        currentStep: "terminology",
+        progress: 66,
+        segmentsCount: (progressData.segments_count as number) || 0,
+      }));
+    } else if (status === "generating_minutes") {
+      setStt((prev) => ({ ...prev, currentStep: "formatting", progress: 80 }));
+    } else if (status === "draft_ready") {
+      hasCompleted.current = true;
+      setStt((prev) => ({ ...prev, status: "completed", progress: 100 }));
+      toast.success("회의록 생성이 완료되었습니다!");
+      setTimeout(() => router.push(`/meetings/${meetingId}/minutes`), 1500);
+    } else if (status === "failed") {
+      setStt((prev) => ({
+        ...prev,
+        status: "error",
+        errorMessage: (progressData.error_message as string) || "처리 중 오류가 발생했습니다",
+      }));
+      toast.error((progressData.error_message as string) || "처리 실패");
+    }
+  }, [progressData, meetingId, router, setStt, toast]);
 
   const currentStepIndex = steps.findIndex((s) => s.key === stt.currentStep);
 
