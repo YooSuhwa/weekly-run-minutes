@@ -1,5 +1,5 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { Provider, createStore } from "jotai";
+import { createStore, Provider } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -23,9 +23,7 @@ vi.mock("@/components/weeky/weeky", () => ({
 }));
 
 vi.mock("@/components/ui/progress-bar", () => ({
-  ProgressBar: ({ value }: { value: number }) => (
-    <div role="progressbar" aria-valuenow={value} />
-  ),
+  ProgressBar: ({ value }: { value: number }) => <div role="progressbar" aria-valuenow={value} />,
 }));
 
 vi.mock("@/components/ui/toast", () => ({
@@ -229,7 +227,7 @@ describe("ProcessingPage", () => {
       rerender(
         <Provider store={createStore()}>
           <ProcessingPage />
-        </Provider>
+        </Provider>,
       );
 
       // Progress should remain at 100, not reset to 33
