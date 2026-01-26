@@ -117,8 +117,9 @@ class MeetingMinutes(BaseModel):
     ai_model: Mapped[str] = mapped_column(String(50), nullable=False)
     prompt_version: Mapped[str] = mapped_column(String(20), nullable=False)
 
-    # AI corrections list (P1-lite: simple list without position)
-    # Structure: [{"original": "...", "corrected": "...", "category": "terminology|formatting|grammar"}]
+    # AI corrections list with position tracking for inline highlighting
+    # Structure: [{"original": "...", "corrected": "...", "category": "terminology|formatting|grammar",
+    #              "paragraph_index": 0, "start_offset": 10, "end_offset": 20}]
     corrections: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
 
     # Edit tracking

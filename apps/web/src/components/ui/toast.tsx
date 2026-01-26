@@ -2,6 +2,7 @@
 
 import { useAtom, useSetAtom } from "jotai";
 import { AlertCircle, CheckCircle, Info, X, XCircle } from "lucide-react";
+import { useMemo } from "react";
 import {
   addToastAtom,
   type Toast as ToastType,
@@ -66,10 +67,13 @@ export function ToastContainer() {
 export function useToast() {
   const addToast = useSetAtom(addToastAtom);
 
-  return {
-    success: (message: string) => addToast({ type: "success", message }),
-    error: (message: string) => addToast({ type: "error", message }),
-    warning: (message: string) => addToast({ type: "warning", message }),
-    info: (message: string) => addToast({ type: "info", message }),
-  };
+  return useMemo(
+    () => ({
+      success: (message: string) => addToast({ type: "success", message }),
+      error: (message: string) => addToast({ type: "error", message }),
+      warning: (message: string) => addToast({ type: "warning", message }),
+      info: (message: string) => addToast({ type: "info", message }),
+    }),
+    [addToast],
+  );
 }

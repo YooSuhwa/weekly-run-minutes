@@ -12,6 +12,7 @@ import {
 } from "@/atoms/orchestration";
 import { QuestionTreePanel } from "@/components/meeting/question-tree-panel";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import type { WeekyExpression } from "@/components/weeky/weeky";
 import { Weeky } from "@/components/weeky/weeky";
 import { useKeyboardShortcuts, useMeetingOrchestration } from "@/hooks";
@@ -19,9 +20,13 @@ import { useMediaRecorder } from "@/hooks/use-media-recorder";
 import { uploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost } from "@/lib/api/__generated__/recordings/recordings";
 import { formatDuration } from "@/lib/utils";
 
+const MAX_UPLOAD_RETRIES = 3;
+const UPLOAD_RETRY_DELAY = 2000;
+
 export default function LiveMeetingPage() {
   const params = useParams();
   const router = useRouter();
+  const toast = useToast();
   const meetingId = params.id as string;
 
   const [orchestration] = useAtom(orchestrationAtom);
@@ -35,6 +40,9 @@ export default function LiveMeetingPage() {
   const [isStarting, setIsStarting] = useState(false);
   const [isEnding, setIsEnding] = useState(false);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const pendingBlobRef = useRef<Blob | null>(null);
   const initializedRef = useRef(false);
 
   // Start meeting on mount
@@ -82,24 +90,80 @@ export default function LiveMeetingPage() {
     await nextSpeaker(meetingId);
   }, [orchestration.phase, meetingId, nextSpeaker]);
 
+  const uploadWithRetry = useCallback(
+    async (blob: Blob, retryCount = 0): Promise<boolean> => {
+      try {
+        await uploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost(meetingId, {
+          file: blob,
+          source: "browser",
+        });
+        return true;
+      } catch (error) {
+        if (retryCount < MAX_UPLOAD_RETRIES - 1) {
+          toast.warning(`업로드 재시도 중... (${retryCount + 2}/${MAX_UPLOAD_RETRIES})`);
+          await new Promise((resolve) => setTimeout(resolve, UPLOAD_RETRY_DELAY));
+          return uploadWithRetry(blob, retryCount + 1);
+        }
+        throw error;
+      }
+    },
+    [meetingId, toast],
+  );
+
+  const handleRetryUpload = useCallback(async () => {
+    if (!pendingBlobRef.current) return;
+
+    setIsRetrying(true);
+    setUploadError(null);
+
+    try {
+      await uploadWithRetry(pendingBlobRef.current, 0);
+      pendingBlobRef.current = null;
+      toast.success("녹음 업로드 완료");
+      router.push(`/meetings/${meetingId}/processing`);
+    } catch {
+      setUploadError("업로드에 실패했습니다. 네트워크 연결을 확인해주세요.");
+      toast.error("업로드 실패");
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [meetingId, router, toast, uploadWithRetry]);
+
+  const handleSkipUpload = useCallback(() => {
+    pendingBlobRef.current = null;
+    setUploadError(null);
+    toast.warning("녹음 파일 없이 진행합니다");
+    router.push(`/meetings/${meetingId}/processing`);
+  }, [meetingId, router, toast]);
+
   const handleEndMeeting = useCallback(async () => {
     setIsEnding(true);
+    setUploadError(null);
+
     try {
       const blob = stopRecording();
       await endMeeting(meetingId);
 
       if (blob) {
-        await uploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost(meetingId, {
-          file: blob,
-          source: "browser",
-        });
+        pendingBlobRef.current = blob;
+        try {
+          await uploadWithRetry(blob, 0);
+          pendingBlobRef.current = null;
+          router.push(`/meetings/${meetingId}/processing`);
+        } catch {
+          setUploadError("녹음 업로드에 실패했습니다. 재시도하거나 건너뛸 수 있습니다.");
+          toast.error("녹음 업로드 실패");
+          setIsEnding(false);
+          return;
+        }
+      } else {
+        router.push(`/meetings/${meetingId}/processing`);
       }
-
-      router.push(`/meetings/${meetingId}/processing`);
     } catch {
       setIsEnding(false);
+      toast.error("회의 종료에 실패했습니다");
     }
-  }, [meetingId, endMeeting, stopRecording, router]);
+  }, [meetingId, endMeeting, stopRecording, router, toast, uploadWithRetry]);
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
@@ -234,7 +298,7 @@ export default function LiveMeetingPage() {
       </div>
 
       {/* End confirmation dialog */}
-      {showEndConfirm && (
+      {showEndConfirm && !uploadError && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-card rounded-lg p-6 shadow-lg max-w-sm w-full mx-4">
             <h3 className="text-lg font-semibold mb-2">회의를 종료하시겠어요?</h3>
@@ -252,6 +316,24 @@ export default function LiveMeetingPage() {
                 disabled={isEnding}
               >
                 {isEnding ? "종료 중..." : "종료"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload error dialog */}
+      {uploadError && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-card rounded-lg p-6 shadow-lg max-w-sm w-full mx-4">
+            <h3 className="text-lg font-semibold mb-2 text-destructive">업로드 실패</h3>
+            <p className="text-sm text-muted-foreground mb-4">{uploadError}</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={handleSkipUpload} disabled={isRetrying}>
+                건너뛰기
+              </Button>
+              <Button size="sm" onClick={handleRetryUpload} disabled={isRetrying}>
+                {isRetrying ? "재시도 중..." : "재시도"}
               </Button>
             </div>
           </div>

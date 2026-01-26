@@ -2,6 +2,7 @@
 
 import { AlertCircle, CheckCircle, FileText, Loader2, Mic, Play, Upload } from "lucide-react";
 import Link from "next/link";
+import { memo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import type { MeetingResponse } from "@/lib/api/__generated__/schemas/meetingResponse";
 import type { MeetingStatus } from "@/lib/api/__generated__/schemas/meetingStatus";
@@ -91,7 +92,7 @@ function getMeetingLink(meeting: MeetingResponse): string {
   }
 }
 
-export function MeetingCard({ meeting }: { meeting: MeetingResponse }) {
+export const MeetingCard = memo(function MeetingCard({ meeting }: { meeting: MeetingResponse }) {
   const config = statusConfig[meeting.status];
   const href = getMeetingLink(meeting);
 
@@ -115,4 +116,4 @@ export function MeetingCard({ meeting }: { meeting: MeetingResponse }) {
       </Card>
     </Link>
   );
-}
+});
