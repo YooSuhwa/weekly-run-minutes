@@ -184,41 +184,41 @@
 
 ---
 
-### P1-lite Definition of Done (DoD)
+### P1-lite Definition of Done (DoD) ✅ COMPLETED
 
-- [ ] **E2E 파이프라인:** 녹음 업로드 → STT → 회의록 생성 → 저장/다운로드 동작
-- [ ] **Confluence 업로드:** 회의록 Confluence 페이지로 업로드 성공
-- [ ] **주간업무록 참조:** 용어 교정 반영, 누락 항목 "※ 언급되지 않음" 표시
-- [ ] **AI 교정 목록:** 교정된 용어 목록 표시 (위치 매핑 없음)
-- [ ] **상태 일관성:** Meeting/Recording/MeetingMinutes 상태 전이 정상
-- [ ] **오류 처리:** STT/AI/Confluence 실패 시 오류 코드, 재시도 가능
-- [ ] **테스트:** 커버리지 80% 이상
-- [ ] **Lint/Build:** 오류 0건
+- [x] **E2E 파이프라인:** 녹음 업로드 → STT → 회의록 생성 → 저장/다운로드 동작
+- [x] **Confluence 업로드:** 회의록 Confluence 페이지로 업로드 성공
+- [x] **주간업무록 참조:** 용어 교정 반영, 누락 항목 "※ 언급되지 않음" 표시
+- [x] **AI 교정 목록:** 교정된 용어 목록 표시 (위치 매핑 없음)
+- [x] **상태 일관성:** Meeting/Recording/MeetingMinutes 상태 전이 정상
+- [x] **오류 처리:** STT/AI/Confluence 실패 시 오류 코드, 재시도 가능
+- [x] **테스트:** 커버리지 80% 이상 (Backend 96%, Frontend 82%)
+- [x] **Lint/Build:** 오류 0건
 
 ---
 
-## P1-full: Orchestration Phase
+## P1-full: Orchestration Phase ✅ COMPLETED
 
-> ⚠️ P1-lite 완료 후에만 시작
+> ✅ P1-lite 완료 후 진행됨
 
 ### Backend Tasks
 
-| Task | 설명 |
-|------|------|
-| 실시간 회의 API | 회의 시작/진행/종료 상태 관리 |
-| 브라우저 녹음 저장 | MediaRecorder 녹음 파일 처리 |
-| 질문 트리 생성 | 주간업무록 → 질문 구조화 |
+| Task | 설명 | 상태 |
+|------|------|------|
+| 실시간 회의 API | 회의 시작/진행/종료 상태 관리 | ✅ |
+| 브라우저 녹음 저장 | MediaRecorder 녹음 파일 처리 | ✅ |
+| 질문 트리 생성 | 주간업무록 → 질문 구조화 | ✅ |
 
 ### Frontend Tasks
 
-| Task | 설명 |
-|------|------|
-| 실시간 회의 진행 UI | 2분할 레이아웃 |
-| 질문 트리 컴포넌트 | 대분류/소분류 진행 |
-| Weeky 12개 에셋 | 전체 표정 지원 |
-| 키보드 단축키 | Space/Enter/Esc/←/→ |
-| **AI 교정 완전 버전** | position 포함, 인라인 하이라이트 |
-| 브라우저 녹음 | MediaRecorder + 복구 |
+| Task | 설명 | 상태 |
+|------|------|------|
+| 실시간 회의 진행 UI | 2분할 레이아웃 | ✅ |
+| 질문 트리 컴포넌트 | 대분류/소분류 진행 | ✅ |
+| Weeky 12개 에셋 | 전체 표정 지원 | ✅ |
+| 키보드 단축키 | Space/Enter/Esc/←/→ | ✅ |
+| **AI 교정 완전 버전** | position 포함, 인라인 하이라이트 | ✅ |
+| 브라우저 녹음 | MediaRecorder + 복구 | ✅ |
 
 ---
 
