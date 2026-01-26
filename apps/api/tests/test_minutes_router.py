@@ -45,15 +45,29 @@ async def meeting_with_minutes(client: AsyncClient, meeting_id: str, db_session)
         json={"status": "draft_ready"},
     )
 
-    # Create minutes directly in DB
+    # Create minutes directly in DB with position data for highlighting
     minutes = MeetingMinutes(
         meeting_id=UUID(meeting_id),
         content_markdown="# 2024-01-15 주간회의 회의록\n\n## 참석자\n- 이상윤",
         ai_model="gpt-4o",
         prompt_version="1.1.0",
         corrections=[
-            {"original": "에스디케이", "corrected": "SDK", "category": "terminology"},
-            {"original": "2024.1.15", "corrected": "2024-01-15", "category": "formatting"},
+            {
+                "original": "에스디케이",
+                "corrected": "SDK",
+                "category": "terminology",
+                "paragraph_index": 3,
+                "start_offset": 2,
+                "end_offset": 5,
+            },
+            {
+                "original": "2024.1.15",
+                "corrected": "2024-01-15",
+                "category": "formatting",
+                "paragraph_index": 0,
+                "start_offset": 2,
+                "end_offset": 12,
+            },
         ],
     )
     db_session.add(minutes)
@@ -149,6 +163,29 @@ class TestGetMeetingMinutes:
         assert data["corrections"][0]["corrected"] == "SDK"
         assert data["corrections"][0]["category"] == "terminology"
         assert data["corrections"][1]["category"] == "formatting"
+
+    @pytest.mark.asyncio
+    async def test_get_minutes_corrections_include_position_data(
+        self, client: AsyncClient, meeting_with_minutes: str
+    ):
+        """Verify that corrections include position data for inline highlighting."""
+        response = await client.get(
+            f"/api/v1/minutes/meetings/{meeting_with_minutes}/minutes"
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # First correction should have position data
+        correction_0 = data["corrections"][0]
+        assert correction_0["paragraph_index"] == 3
+        assert correction_0["start_offset"] == 2
+        assert correction_0["end_offset"] == 5
+
+        # Second correction should also have position data
+        correction_1 = data["corrections"][1]
+        assert correction_1["paragraph_index"] == 0
+        assert correction_1["start_offset"] == 2
+        assert correction_1["end_offset"] == 12
 
     @pytest.mark.asyncio
     async def test_get_minutes_not_found(self, client: AsyncClient, meeting_id: str):

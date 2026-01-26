@@ -14,6 +14,7 @@ const {
   mockStopRecording,
   mockRouterPush,
   mockUploadRecording,
+  mockToast,
 } = vi.hoisted(() => ({
   mockStartMeeting: vi.fn().mockResolvedValue(undefined),
   mockNextItem: vi.fn().mockResolvedValue(undefined),
@@ -23,6 +24,12 @@ const {
   mockStopRecording: vi.fn().mockReturnValue(new Blob(["test"], { type: "audio/webm" })),
   mockRouterPush: vi.fn(),
   mockUploadRecording: vi.fn().mockResolvedValue(undefined),
+  mockToast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+    info: vi.fn(),
+  },
 }));
 
 // Mock next/navigation
@@ -74,6 +81,11 @@ vi.mock("@/components/meeting/question-tree-panel", () => ({
 // Mock upload recording API
 vi.mock("@/lib/api/__generated__/recordings/recordings", () => ({
   uploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost: mockUploadRecording,
+}));
+
+// Mock useToast
+vi.mock("@/components/ui/toast", () => ({
+  useToast: () => mockToast,
 }));
 
 import {
@@ -567,5 +579,85 @@ describe("LiveMeetingPage - Upload Recording", () => {
     });
 
     expect(mockUploadRecording).not.toHaveBeenCalled();
+  });
+
+  it("shows error dialog when upload fails after all retries", async () => {
+    mockUploadRecording.mockRejectedValue(new Error("Upload failed"));
+
+    const user = userEvent.setup();
+    renderWithProviders(<LiveMeetingPage />);
+
+    await user.click(screen.getByRole("button", { name: "종료 (Esc)" }));
+
+    const confirmButton = screen.getByRole("button", { name: /^종료$/ });
+    await user.click(confirmButton);
+
+    // Wait for retries and error dialog
+    await waitFor(
+      () => {
+        expect(screen.getByText("업로드 실패")).toBeInTheDocument();
+      },
+      { timeout: 10000 },
+    );
+
+    expect(screen.getByText("건너뛰기")).toBeInTheDocument();
+    expect(screen.getByText("재시도")).toBeInTheDocument();
+  });
+
+  it("navigates to processing page when skip is clicked after upload error", async () => {
+    mockUploadRecording.mockRejectedValue(new Error("Upload failed"));
+
+    const user = userEvent.setup();
+    renderWithProviders(<LiveMeetingPage />);
+
+    await user.click(screen.getByRole("button", { name: "종료 (Esc)" }));
+
+    const confirmButton = screen.getByRole("button", { name: /^종료$/ });
+    await user.click(confirmButton);
+
+    // Wait for error dialog
+    await waitFor(
+      () => {
+        expect(screen.getByText("업로드 실패")).toBeInTheDocument();
+      },
+      { timeout: 10000 },
+    );
+
+    // Click skip
+    await user.click(screen.getByText("건너뛰기"));
+
+    expect(mockRouterPush).toHaveBeenCalledWith("/meetings/test-meeting-id/processing");
+  });
+
+  it("retries upload when retry button is clicked", async () => {
+    // First call fails, second succeeds
+    mockUploadRecording.mockRejectedValueOnce(new Error("Upload failed"));
+    mockUploadRecording.mockRejectedValueOnce(new Error("Upload failed"));
+    mockUploadRecording.mockRejectedValueOnce(new Error("Upload failed"));
+    mockUploadRecording.mockResolvedValueOnce(undefined);
+
+    const user = userEvent.setup();
+    renderWithProviders(<LiveMeetingPage />);
+
+    await user.click(screen.getByRole("button", { name: "종료 (Esc)" }));
+
+    const confirmButton = screen.getByRole("button", { name: /^종료$/ });
+    await user.click(confirmButton);
+
+    // Wait for error dialog
+    await waitFor(
+      () => {
+        expect(screen.getByText("업로드 실패")).toBeInTheDocument();
+      },
+      { timeout: 10000 },
+    );
+
+    // Click retry
+    await user.click(screen.getByText("재시도"));
+
+    // Should navigate after successful retry
+    await waitFor(() => {
+      expect(mockRouterPush).toHaveBeenCalledWith("/meetings/test-meeting-id/processing");
+    });
   });
 });
