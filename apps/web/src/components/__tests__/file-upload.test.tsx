@@ -1,5 +1,13 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Mock useDropzone to control its behavior
+const mockUseDropzone = vi.fn();
+vi.mock("react-dropzone", () => ({
+  useDropzone: (options: any) => mockUseDropzone(options),
+}));
+
 import { FileUpload } from "../ui/file-upload";
 
 describe("FileUpload", () => {
@@ -8,6 +16,23 @@ describe("FileUpload", () => {
     onFileSelect: vi.fn(),
     onFileRemove: vi.fn(),
   };
+
+  beforeEach(() => {
+    // Default mock implementation
+    mockUseDropzone.mockImplementation((options: any) => ({
+      getRootProps: () => ({
+        onClick: () => {},
+        onDrop: (e: any) => {
+          if (options.onDrop && e.dataTransfer?.files?.length > 0) {
+            options.onDrop([e.dataTransfer.files[0]]);
+          }
+        },
+      }),
+      getInputProps: () => ({ type: "file" }),
+      isDragActive: false,
+      fileRejections: [],
+    }));
+  });
 
   afterEach(() => {
     cleanup();
@@ -65,6 +90,25 @@ describe("FileUpload", () => {
       const buttons = screen.getAllByRole("button");
       expect(buttons.length).toBeGreaterThan(0);
     });
+
+    it("calls onFileRemove when remove button is clicked", async () => {
+      const user = userEvent.setup();
+      const onFileRemove = vi.fn();
+      const file = new File(["audio"], "test.mp3", { type: "audio/mpeg" });
+      render(<FileUpload {...defaultProps} file={file} onFileRemove={onFileRemove} />);
+
+      await user.click(screen.getByRole("button"));
+      expect(onFileRemove).toHaveBeenCalled();
+    });
+
+    it("applies custom className when file is selected", () => {
+      const file = new File(["audio"], "test.mp3", { type: "audio/mpeg" });
+      const { container } = render(
+        <FileUpload {...defaultProps} file={file} className="custom-selected" />,
+      );
+      const wrapper = container.firstChild as HTMLElement;
+      expect(wrapper.getAttribute("class")).toContain("custom-selected");
+    });
   });
 
   describe("disabled state", () => {
@@ -82,33 +126,115 @@ describe("FileUpload", () => {
     });
   });
 
-  describe("file drop functionality", () => {
-    it("calls onFileSelect when valid file is dropped", async () => {
-      const onFileSelect = vi.fn();
-      const { container } = render(<FileUpload {...defaultProps} onFileSelect={onFileSelect} />);
-      const dropzone = container.querySelector("[class*='border-dashed']") as HTMLElement;
+  describe("drag active state", () => {
+    it("shows drag active text when dragging", () => {
+      mockUseDropzone.mockImplementationOnce(() => ({
+        getRootProps: () => ({}),
+        getInputProps: () => ({ type: "file" }),
+        isDragActive: true,
+        fileRejections: [],
+      }));
 
-      const file = new File(["audio content"], "test.mp3", { type: "audio/mpeg" });
-      const dataTransfer = {
-        files: [file],
-        items: [{ kind: "file", type: "audio/mpeg", getAsFile: () => file }],
-        types: ["Files"],
-      };
-
-      // Simulate drop event
-      const dropEvent = new Event("drop", { bubbles: true });
-      Object.defineProperty(dropEvent, "dataTransfer", { value: dataTransfer });
-      dropzone.dispatchEvent(dropEvent);
-
-      // Note: react-dropzone handles the actual file selection internally
-      // The callback is tested via the component's integration with useDropzone
+      render(<FileUpload {...defaultProps} />);
+      expect(screen.getByText("여기에 놓으세요")).toBeDefined();
     });
 
-    it("only accepts first file when multiple files dropped", () => {
+    it("applies drag active styling", () => {
+      mockUseDropzone.mockImplementationOnce(() => ({
+        getRootProps: () => ({}),
+        getInputProps: () => ({ type: "file" }),
+        isDragActive: true,
+        fileRejections: [],
+      }));
+
+      const { container } = render(<FileUpload {...defaultProps} />);
+      const dropzone = container.querySelector("[class*='border-primary']");
+      expect(dropzone).not.toBeNull();
+    });
+  });
+
+  describe("file rejection", () => {
+    it("shows error message for file too large", () => {
+      mockUseDropzone.mockImplementationOnce(() => ({
+        getRootProps: () => ({}),
+        getInputProps: () => ({ type: "file" }),
+        isDragActive: false,
+        fileRejections: [{ errors: [{ code: "file-too-large", message: "" }] }],
+      }));
+
+      render(<FileUpload {...defaultProps} />);
+      expect(screen.getByText("파일 크기가 100MB를 초과합니다")).toBeDefined();
+    });
+
+    it("shows error message for invalid file type", () => {
+      mockUseDropzone.mockImplementationOnce(() => ({
+        getRootProps: () => ({}),
+        getInputProps: () => ({ type: "file" }),
+        isDragActive: false,
+        fileRejections: [{ errors: [{ code: "file-invalid-type", message: "" }] }],
+      }));
+
+      render(<FileUpload {...defaultProps} />);
+      expect(screen.getByText("지원하지 않는 파일 형식입니다")).toBeDefined();
+    });
+
+    it("shows no error when fileRejections is empty", () => {
+      mockUseDropzone.mockImplementationOnce(() => ({
+        getRootProps: () => ({}),
+        getInputProps: () => ({ type: "file" }),
+        isDragActive: false,
+        fileRejections: [],
+      }));
+
+      render(<FileUpload {...defaultProps} />);
+      expect(screen.queryByText(/파일 크기가|지원하지 않는/)).toBeNull();
+    });
+  });
+
+  describe("onDrop callback", () => {
+    it("calls onFileSelect with the first file when files are dropped", () => {
       const onFileSelect = vi.fn();
+      let capturedOnDrop: ((files: File[]) => void) | undefined;
+
+      mockUseDropzone.mockImplementationOnce((options: any) => {
+        capturedOnDrop = options.onDrop;
+        return {
+          getRootProps: () => ({}),
+          getInputProps: () => ({ type: "file" }),
+          isDragActive: false,
+          fileRejections: [],
+        };
+      });
+
       render(<FileUpload {...defaultProps} onFileSelect={onFileSelect} />);
-      // react-dropzone with maxFiles: 1 ensures only one file is accepted
-      expect(true).toBe(true); // Configuration test
+
+      // Simulate the onDrop callback being called with files
+      const file = new File(["audio"], "test.mp3", { type: "audio/mpeg" });
+      capturedOnDrop?.([file]);
+
+      expect(onFileSelect).toHaveBeenCalledWith(file);
+    });
+
+    it("does not call onFileSelect when empty array is dropped", () => {
+      const onFileSelect = vi.fn();
+      let capturedOnDrop: ((files: File[]) => void) | undefined;
+
+      mockUseDropzone.mockImplementationOnce((options: any) => {
+        capturedOnDrop = options.onDrop;
+        return {
+          getRootProps: () => ({}),
+          getInputProps: () => ({ type: "file" }),
+          isDragActive: false,
+          fileRejections: [],
+        };
+      });
+
+      render(<FileUpload {...defaultProps} onFileSelect={onFileSelect} />);
+
+      // Simulate the onDrop callback being called with empty array
+      capturedOnDrop?.([]);
+
+      expect(onFileSelect).not.toHaveBeenCalled();
     });
   });
 });

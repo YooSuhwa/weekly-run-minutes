@@ -194,13 +194,14 @@ describe("TeamPage", () => {
     it("adds member locally when API fails (offline fallback)", async () => {
       const user = userEvent.setup();
 
-      mockUseAddMember.mockReturnValueOnce({
-        mutate: (params: any) => {
-          if (params.mutation?.onError) {
-            params.mutation.onError();
+      // Override the mock to simulate error callback
+      mockUseAddMember.mockImplementationOnce((options: any) => ({
+        mutate: () => {
+          if (options?.mutation?.onError) {
+            options.mutation.onError();
           }
         },
-      });
+      }));
 
       renderWithProviders(<TeamPage />);
       await user.click(screen.getByText("팀원 추가"));
@@ -332,13 +333,14 @@ describe("TeamPage", () => {
     it("saves edit locally when API fails (offline fallback)", async () => {
       const user = userEvent.setup();
 
-      mockUseUpdateMember.mockReturnValueOnce({
-        mutate: (params: any) => {
-          if (params.mutation?.onError) {
-            params.mutation.onError();
+      // Override the mock to simulate error callback
+      mockUseUpdateMember.mockImplementationOnce((options: any) => ({
+        mutate: () => {
+          if (options?.mutation?.onError) {
+            options.mutation.onError();
           }
         },
-      });
+      }));
 
       renderWithProviders(<TeamPage />);
       const editButtons = screen.getAllByRole("button");
@@ -434,12 +436,55 @@ describe("TeamPage", () => {
 
     it("updates member locally when no teamId exists", async () => {
       const user = userEvent.setup();
-      mockUseListTeams.mockReturnValueOnce({ data: undefined });
+
+      // Return empty teams to have no teamId
+      mockUseListTeams.mockReturnValue({ data: [] });
+      mockUseGetTeam.mockReturnValue({ data: undefined });
+
+      // Set up mock with initial members in atom (simulating local-only state)
+      const mockUpdateMemberFn = vi.fn((options: any) => ({
+        mutate: vi.fn(),
+      }));
+      mockUseUpdateMember.mockImplementation(mockUpdateMemberFn);
 
       renderWithProviders(<TeamPage />);
 
-      expect(screen.getByText("팀원 관리")).toBeInTheDocument();
-      expect(screen.getByText("팀원 추가")).toBeInTheDocument();
+      // First add a member locally
+      await user.click(screen.getByText("팀원 추가"));
+      const input = screen.getByPlaceholderText("이름 입력");
+      await user.type(input, "로컬팀원");
+      await user.click(screen.getByText("추가"));
+
+      await waitFor(() => {
+        expect(mockToastSuccess).toHaveBeenCalledWith("추가되었습니다");
+      });
+
+      // Now edit that member
+      vi.clearAllMocks();
+      const editButtons = screen.getAllByRole("button");
+      const editButton = editButtons.find((btn) => btn.querySelector("svg.lucide-pencil"));
+      if (editButton) {
+        await user.click(editButton);
+      }
+
+      await waitFor(() => {
+        const inputs = screen.getAllByRole("textbox");
+        const editInput = inputs.find((input) => (input as HTMLInputElement).value === "로컬팀원");
+        expect(editInput).toBeInTheDocument();
+      });
+
+      const inputs = screen.getAllByRole("textbox");
+      const editInput = inputs.find((input) => (input as HTMLInputElement).value === "로컬팀원");
+      if (editInput) {
+        await user.clear(editInput);
+        await user.type(editInput, "수정된로컬팀원");
+      }
+
+      await user.click(screen.getByText("저장"));
+
+      await waitFor(() => {
+        expect(mockToastSuccess).toHaveBeenCalledWith("수정되었습니다");
+      });
     });
   });
 
@@ -463,13 +508,14 @@ describe("TeamPage", () => {
     it("deletes member locally when API fails (offline fallback)", async () => {
       const user = userEvent.setup();
 
-      mockUseRemoveMember.mockReturnValueOnce({
+      // Override the mock to simulate error callback
+      mockUseRemoveMember.mockImplementationOnce((options: any) => ({
         mutate: (params: any) => {
-          if (params.mutation?.onError) {
-            params.mutation.onError(undefined, params);
+          if (options?.mutation?.onError) {
+            options.mutation.onError(undefined, params);
           }
         },
-      });
+      }));
 
       renderWithProviders(<TeamPage />);
       const deleteButtons = screen.getAllByRole("button");
@@ -485,12 +531,34 @@ describe("TeamPage", () => {
 
     it("deletes member locally when no teamId exists", async () => {
       const user = userEvent.setup();
-      mockUseListTeams.mockReturnValueOnce({ data: undefined });
+
+      // Return empty teams to have no teamId
+      mockUseListTeams.mockReturnValue({ data: [] });
+      mockUseGetTeam.mockReturnValue({ data: undefined });
 
       renderWithProviders(<TeamPage />);
 
-      expect(screen.getByText("팀원 관리")).toBeInTheDocument();
-      expect(screen.getByText("팀원 추가")).toBeInTheDocument();
+      // First add a member locally
+      await user.click(screen.getByText("팀원 추가"));
+      const input = screen.getByPlaceholderText("이름 입력");
+      await user.type(input, "삭제할팀원");
+      await user.click(screen.getByText("추가"));
+
+      await waitFor(() => {
+        expect(mockToastSuccess).toHaveBeenCalledWith("추가되었습니다");
+      });
+
+      // Now delete that member
+      vi.clearAllMocks();
+      const deleteButtons = screen.getAllByRole("button");
+      const deleteButton = deleteButtons.find((btn) => btn.querySelector("svg.lucide-trash-2"));
+      if (deleteButton) {
+        await user.click(deleteButton);
+      }
+
+      await waitFor(() => {
+        expect(mockToastSuccess).toHaveBeenCalledWith("삭제되었습니다");
+      });
     });
   });
 
