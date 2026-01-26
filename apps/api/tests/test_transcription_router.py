@@ -1,7 +1,7 @@
 """Tests for transcription API endpoints."""
 
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 import pytest
@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from src.models import Meeting, MeetingStatus, Recording, Transcript
 from src.routers.transcription import process_transcription
-from src.services.stt import STTError, TranscriptSegment, TranscriptionResult
+from src.services.stt import STTError, TranscriptionResult, TranscriptSegment
 
 
 @pytest.fixture
@@ -322,7 +322,7 @@ class TestProcessTranscription:
             await process_transcription(fake_id)
 
     @pytest.mark.asyncio
-    async def test_no_recording(self, client: AsyncClient, meeting_id: str, db_session):
+    async def test_no_recording(self, client: AsyncClient, meeting_id: str, db_session):  # noqa: ARG002
         """Should return early if meeting has no recording."""
         mid = UUID(meeting_id)
 

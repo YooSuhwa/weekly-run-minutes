@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   currentTeamAtom,
   selectedMembersAtom,
-  teamMembersAtom,
   type Team,
   type TeamMember,
+  teamMembersAtom,
 } from "../team";
 
 describe("team atoms", () => {

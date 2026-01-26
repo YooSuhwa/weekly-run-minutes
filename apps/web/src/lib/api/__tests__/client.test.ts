@@ -14,7 +14,7 @@ vi.mock("axios", () => {
       statusText: "OK",
       headers: {},
       config: {},
-    })
+    }),
   );
 
   mockCancelTokenSource.mockReturnValue({
@@ -44,7 +44,7 @@ describe("API Client", () => {
         statusText: "OK",
         headers: {},
         config: {},
-      })
+      }),
     );
     mockCancelTokenSource.mockReturnValue({
       token: "mock-cancel-token",
@@ -100,7 +100,7 @@ describe("API Client", () => {
           headers: {
             "Content-Type": "application/json",
           },
-        })
+        }),
       );
     });
   });
@@ -177,7 +177,7 @@ describe("API Client", () => {
                 config: {},
               });
             }, 100);
-          })
+          }),
       );
 
       const { apiClient } = await import("../client");
@@ -225,7 +225,7 @@ describe("API Client", () => {
           method: "GET",
           url: "/users",
           params: { limit: 10 },
-        })
+        }),
       );
     });
 
@@ -246,7 +246,7 @@ describe("API Client", () => {
           method: "POST",
           url: "/users",
           data: postData,
-        })
+        }),
       );
     });
 
@@ -264,7 +264,7 @@ describe("API Client", () => {
         expect.objectContaining({
           method: "PUT",
           url: "/users/1",
-        })
+        }),
       );
     });
 
@@ -281,7 +281,7 @@ describe("API Client", () => {
         expect.objectContaining({
           method: "DELETE",
           url: "/users/1",
-        })
+        }),
       );
     });
 
@@ -353,7 +353,7 @@ describe("API Client", () => {
       expect(mockAxiosInstanceFn).toHaveBeenCalledWith(
         expect.objectContaining({
           cancelToken: "mock-cancel-token",
-        })
+        }),
       );
     });
   });

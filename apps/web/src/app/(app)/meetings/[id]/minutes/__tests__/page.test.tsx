@@ -1,6 +1,6 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Provider, createStore } from "jotai";
+import { createStore, Provider } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -93,7 +93,7 @@ vi.mock("../correction-panel", () => ({
       <p>교정 건수: {corrections.length}</p>
       {corrections.map((correction, idx) => (
         <button
-          key={idx}
+          key={`${correction.original}-${correction.corrected}-${idx}`}
           type="button"
           onClick={() => onCorrectionClick?.(correction)}
           data-testid={`correction-${idx}`}

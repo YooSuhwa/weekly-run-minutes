@@ -4,10 +4,10 @@ import pytest
 
 from src.models import MeetingMode, MeetingStatus
 from src.services.meeting_state import (
-    InvalidTransitionError,
-    MeetingStateMachine,
     REALTIME_TRANSITIONS,
     UPLOAD_TRANSITIONS,
+    InvalidTransitionError,
+    MeetingStateMachine,
 )
 
 
@@ -254,5 +254,5 @@ class TestTransitionMapsCompleteness:
     def test_realtime_map_covers_all_statuses(self):
         """All statuses should be keys in realtime transitions."""
         all_statuses = {s.value for s in MeetingStatus}
-        map_statuses = {k.value if hasattr(k, "value") else k for k in REALTIME_TRANSITIONS.keys()}
+        map_statuses = {k.value if hasattr(k, "value") else k for k in REALTIME_TRANSITIONS}
         assert all_statuses == map_statuses

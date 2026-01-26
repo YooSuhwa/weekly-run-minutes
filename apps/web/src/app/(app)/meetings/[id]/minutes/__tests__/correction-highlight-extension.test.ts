@@ -1,8 +1,8 @@
-import { describe, it, expect } from "vitest";
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { CorrectionHighlight } from "../correction-highlight-extension";
+import { describe, expect, it } from "vitest";
 import type { CorrectionItem } from "@/atoms/minutes";
+import { CorrectionHighlight } from "../correction-highlight-extension";
 
 describe("CorrectionHighlight Extension", () => {
   describe("extension creation", () => {

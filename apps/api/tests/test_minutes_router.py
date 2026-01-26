@@ -9,7 +9,6 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from src.models import Meeting, MeetingMinutes, MeetingStatus, Transcript
-from src.models.team import Team, TeamMember
 from src.models.weekly_report import WeeklyReport
 from src.routers.minutes import generate_minutes_task
 from src.services.minutes_generator import (
@@ -425,7 +424,7 @@ class TestGenerateMinutesTask:
 
     @pytest.mark.asyncio
     async def test_successful_generation(
-        self, client: AsyncClient, meeting_with_transcripts_for_generation: str, db_session
+        self, client: AsyncClient, meeting_with_transcripts_for_generation: str, db_session  # noqa: ARG002
     ):
         """Should generate minutes and store them with corrections."""
         meeting_id = UUID(meeting_with_transcripts_for_generation)
@@ -540,7 +539,7 @@ class TestGenerateMinutesTask:
 
     @pytest.mark.asyncio
     async def test_minutes_generation_error_sets_failed(
-        self, client: AsyncClient, meeting_with_transcripts_for_generation: str, db_session
+        self, client: AsyncClient, meeting_with_transcripts_for_generation: str, db_session  # noqa: ARG002
     ):
         """Should set FAILED status when MinutesGenerationError occurs."""
         meeting_id = UUID(meeting_with_transcripts_for_generation)
@@ -571,7 +570,7 @@ class TestGenerateMinutesTask:
 
     @pytest.mark.asyncio
     async def test_unexpected_error_sets_failed(
-        self, client: AsyncClient, meeting_with_transcripts_for_generation: str, db_session
+        self, client: AsyncClient, meeting_with_transcripts_for_generation: str, db_session  # noqa: ARG002
     ):
         """Should set FAILED status when unexpected exception occurs."""
         meeting_id = UUID(meeting_with_transcripts_for_generation)
