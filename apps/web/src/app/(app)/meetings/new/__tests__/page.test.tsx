@@ -2,23 +2,34 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider, createStore } from "jotai";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Use vi.hoisted() for stable mock references
+const mockPush = vi.hoisted(() => vi.fn());
+const mockMutate = vi.hoisted(() => vi.fn());
+const mockIsPending = vi.hoisted(() => ({ value: false }));
+
+// Store callbacks globally to trigger them in tests
+let capturedCallbacks: {
+  onSuccess?: (data: { id: string }) => void;
+  onError?: () => void;
+} = {};
 
 // Mock next/navigation
-const mockPush = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
 }));
 
 // Mock Orval hook
-const mockMutate = vi.fn();
 vi.mock("@/lib/api/__generated__/meetings/meetings", () => ({
-  useCreateMeetingApiV1MeetingsPost: (opts?: { mutation?: { onSuccess?: (data: { id: string }) => void; onError?: () => void } }) => {
-    // Store callbacks to simulate async behavior
-    (globalThis as Record<string, unknown>).__createMeetingCallbacks = opts?.mutation;
+  useCreateMeetingApiV1MeetingsPost: (opts?: {
+    mutation?: { onSuccess?: (data: { id: string }) => void; onError?: () => void };
+  }) => {
+    // Capture callbacks for test control
+    capturedCallbacks = opts?.mutation || {};
     return {
       mutate: mockMutate,
-      isPending: false,
+      isPending: mockIsPending.value,
     };
   },
 }));
@@ -31,6 +42,11 @@ function renderWithProviders(ui: ReactNode) {
 }
 
 describe("NewMeetingPage", () => {
+  beforeEach(() => {
+    capturedCallbacks = {};
+    mockIsPending.value = false;
+  });
+
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
@@ -97,5 +113,109 @@ describe("NewMeetingPage", () => {
     renderWithProviders(<NewMeetingPage />);
     expect(screen.getByText("- 브라우저 녹음")).toBeInTheDocument();
     expect(screen.getByText("- 질문 트리 기반 진행")).toBeInTheDocument();
+  });
+
+  it("navigates to setup page on successful upload mode creation", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<NewMeetingPage />);
+
+    const nextButton = screen.getByRole("button", { name: "다음" });
+    await user.click(nextButton);
+
+    // Simulate successful API response
+    capturedCallbacks.onSuccess?.({ id: "test-meeting-123" });
+
+    expect(mockPush).toHaveBeenCalledWith("/meetings/test-meeting-123/setup");
+  });
+
+  it("navigates to live page on successful realtime mode creation", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<NewMeetingPage />);
+
+    // Select realtime mode
+    const realtimeCard = screen.getByText("실시간 회의").closest("[class*='cursor-pointer']");
+    await user.click(realtimeCard!);
+
+    const nextButton = screen.getByRole("button", { name: "다음" });
+    await user.click(nextButton);
+
+    // Simulate successful API response
+    capturedCallbacks.onSuccess?.({ id: "test-meeting-456" });
+
+    expect(mockPush).toHaveBeenCalledWith("/meetings/test-meeting-456/live");
+  });
+
+  it("navigates to fallback page on creation error", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<NewMeetingPage />);
+
+    const nextButton = screen.getByRole("button", { name: "다음" });
+    await user.click(nextButton);
+
+    // Simulate API error
+    capturedCallbacks.onError?.();
+
+    expect(mockPush).toHaveBeenCalledWith("/meetings/new-temp/setup");
+  });
+
+  it("can switch back to upload mode after selecting realtime", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<NewMeetingPage />);
+
+    // Select realtime mode
+    const realtimeCard = screen.getByText("실시간 회의").closest("[class*='cursor-pointer']");
+    await user.click(realtimeCard!);
+
+    // Switch back to upload mode
+    const uploadCard = screen.getByText("녹음 파일 업로드").closest("[class*='cursor-pointer']");
+    await user.click(uploadCard!);
+
+    expect(uploadCard?.className).toContain("ring-2");
+  });
+
+  it("disables button and shows loading text when mutation is pending", () => {
+    mockIsPending.value = true;
+    renderWithProviders(<NewMeetingPage />);
+
+    const nextButton = screen.getByRole("button", { name: "생성 중..." });
+    expect(nextButton).toBeDisabled();
+  });
+
+  it("sends correct meeting_mode based on selection", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<NewMeetingPage />);
+
+    // Select realtime mode
+    const realtimeCard = screen.getByText("실시간 회의").closest("[class*='cursor-pointer']");
+    await user.click(realtimeCard!);
+
+    const nextButton = screen.getByRole("button", { name: "다음" });
+    await user.click(nextButton);
+
+    expect(mockMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          meeting_mode: "realtime",
+        }),
+      }),
+    );
+  });
+
+  it("includes team_id and meeting_date in mutation data", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<NewMeetingPage />);
+
+    const nextButton = screen.getByRole("button", { name: "다음" });
+    await user.click(nextButton);
+
+    expect(mockMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          team_id: "00000000-0000-0000-0000-000000000001",
+          meeting_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          title: expect.stringContaining("주간회의"),
+        }),
+      }),
+    );
   });
 });
