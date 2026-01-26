@@ -26,11 +26,14 @@ import type {
 
 import type {
   HTTPValidationError,
+  TeamAuthRequest,
+  TeamAuthResponse,
   TeamCreate,
   TeamMemberCreate,
   TeamMemberResponse,
   TeamMemberUpdate,
   TeamResponse,
+  TeamUpdate,
   TeamWithMembers
 } from '.././schemas';
 
@@ -40,7 +43,7 @@ import { apiClient } from '../../client';
 
 
 /**
- * List all teams.
+ * List all teams (names only, no passwords or sensitive data).
  * @summary List Teams
  */
 export const listTeamsApiV1TeamsGet = (
@@ -131,7 +134,7 @@ export function useListTeamsApiV1TeamsGet<TData = Awaited<ReturnType<typeof list
 
 
 /**
- * Create a new team with optional members.
+ * Create a new team with optional password and members.
  * @summary Create Team
  */
 export const createTeamApiV1TeamsPost = (
@@ -286,6 +289,71 @@ export function useGetTeamApiV1TeamsTeamIdGet<TData = Awaited<ReturnType<typeof 
 
 
 /**
+ * Update a team.
+ * @summary Update Team
+ */
+export const updateTeamApiV1TeamsTeamIdPut = (
+    teamId: string,
+    teamUpdate: TeamUpdate,
+ signal?: AbortSignal
+) => {
+      
+      
+      return apiClient<TeamWithMembers>(
+      {url: `/api/v1/teams/${teamId}`, method: 'PUT',
+      headers: {'Content-Type': 'application/json', },
+      data: teamUpdate, signal
+    },
+      );
+    }
+  
+
+
+export const getUpdateTeamApiV1TeamsTeamIdPutMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTeamApiV1TeamsTeamIdPut>>, TError,{teamId: string;data: TeamUpdate}, TContext>, }
+): UseMutationOptions<Awaited<ReturnType<typeof updateTeamApiV1TeamsTeamIdPut>>, TError,{teamId: string;data: TeamUpdate}, TContext> => {
+
+const mutationKey = ['updateTeamApiV1TeamsTeamIdPut'];
+const {mutation: mutationOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateTeamApiV1TeamsTeamIdPut>>, {teamId: string;data: TeamUpdate}> = (props) => {
+          const {teamId,data} = props ?? {};
+
+          return  updateTeamApiV1TeamsTeamIdPut(teamId,data,)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateTeamApiV1TeamsTeamIdPutMutationResult = NonNullable<Awaited<ReturnType<typeof updateTeamApiV1TeamsTeamIdPut>>>
+    export type UpdateTeamApiV1TeamsTeamIdPutMutationBody = TeamUpdate
+    export type UpdateTeamApiV1TeamsTeamIdPutMutationError = HTTPValidationError
+
+    /**
+ * @summary Update Team
+ */
+export const useUpdateTeamApiV1TeamsTeamIdPut = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTeamApiV1TeamsTeamIdPut>>, TError,{teamId: string;data: TeamUpdate}, TContext>, }
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateTeamApiV1TeamsTeamIdPut>>,
+        TError,
+        {teamId: string;data: TeamUpdate},
+        TContext
+      > => {
+      return useMutation(getUpdateTeamApiV1TeamsTeamIdPutMutationOptions(options), queryClient);
+    }
+    /**
  * Delete a team.
  * @summary Delete Team
  */
@@ -346,6 +414,71 @@ export const useDeleteTeamApiV1TeamsTeamIdDelete = <TError = HTTPValidationError
         TContext
       > => {
       return useMutation(getDeleteTeamApiV1TeamsTeamIdDeleteMutationOptions(options), queryClient);
+    }
+    /**
+ * Authenticate with team password. Returns team_id on success.
+ * @summary Authenticate Team
+ */
+export const authenticateTeamApiV1TeamsTeamIdAuthPost = (
+    teamId: string,
+    teamAuthRequest: TeamAuthRequest,
+ signal?: AbortSignal
+) => {
+      
+      
+      return apiClient<TeamAuthResponse>(
+      {url: `/api/v1/teams/${teamId}/auth`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: teamAuthRequest, signal
+    },
+      );
+    }
+  
+
+
+export const getAuthenticateTeamApiV1TeamsTeamIdAuthPostMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof authenticateTeamApiV1TeamsTeamIdAuthPost>>, TError,{teamId: string;data: TeamAuthRequest}, TContext>, }
+): UseMutationOptions<Awaited<ReturnType<typeof authenticateTeamApiV1TeamsTeamIdAuthPost>>, TError,{teamId: string;data: TeamAuthRequest}, TContext> => {
+
+const mutationKey = ['authenticateTeamApiV1TeamsTeamIdAuthPost'];
+const {mutation: mutationOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof authenticateTeamApiV1TeamsTeamIdAuthPost>>, {teamId: string;data: TeamAuthRequest}> = (props) => {
+          const {teamId,data} = props ?? {};
+
+          return  authenticateTeamApiV1TeamsTeamIdAuthPost(teamId,data,)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AuthenticateTeamApiV1TeamsTeamIdAuthPostMutationResult = NonNullable<Awaited<ReturnType<typeof authenticateTeamApiV1TeamsTeamIdAuthPost>>>
+    export type AuthenticateTeamApiV1TeamsTeamIdAuthPostMutationBody = TeamAuthRequest
+    export type AuthenticateTeamApiV1TeamsTeamIdAuthPostMutationError = HTTPValidationError
+
+    /**
+ * @summary Authenticate Team
+ */
+export const useAuthenticateTeamApiV1TeamsTeamIdAuthPost = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof authenticateTeamApiV1TeamsTeamIdAuthPost>>, TError,{teamId: string;data: TeamAuthRequest}, TContext>, }
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof authenticateTeamApiV1TeamsTeamIdAuthPost>>,
+        TError,
+        {teamId: string;data: TeamAuthRequest},
+        TContext
+      > => {
+      return useMutation(getAuthenticateTeamApiV1TeamsTeamIdAuthPostMutationOptions(options), queryClient);
     }
     /**
  * List all members of a team.

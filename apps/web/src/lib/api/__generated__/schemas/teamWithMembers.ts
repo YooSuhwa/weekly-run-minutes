@@ -15,5 +15,8 @@ export interface TeamWithMembers {
   updated_at: string;
   id: string;
   name: string;
+  confluence_base_url?: string | null;
+  confluence_space_key?: string | null;
+  has_password?: boolean;
   members: TeamMemberResponse[];
 }

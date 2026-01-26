@@ -5,19 +5,13 @@
  * WeeklyRun - AI Meeting Orchestration API
  * OpenAPI spec version: 0.1.0
  */
-import type { TeamMemberCreate } from './teamMemberCreate';
 
 /**
- * Schema for creating a team.
+ * Schema for updating a team.
  */
-export interface TeamCreate {
-  /**
-   * @minLength 1
-   * @maxLength 100
-   */
-  name: string;
+export interface TeamUpdate {
+  name?: string | null;
   password?: string | null;
   confluence_base_url?: string | null;
   confluence_space_key?: string | null;
-  members?: TeamMemberCreate[] | null;
 }

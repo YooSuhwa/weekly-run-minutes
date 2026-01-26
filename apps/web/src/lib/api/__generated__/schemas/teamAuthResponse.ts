@@ -7,11 +7,9 @@
  */
 
 /**
- * Schema for team response (list view - no sensitive data).
+ * Schema for team authentication response.
  */
-export interface TeamResponse {
-  created_at: string;
-  updated_at: string;
-  id: string;
-  name: string;
+export interface TeamAuthResponse {
+  team_id: string;
+  team_name: string;
 }

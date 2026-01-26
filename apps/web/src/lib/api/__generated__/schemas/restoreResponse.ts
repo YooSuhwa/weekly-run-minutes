@@ -7,11 +7,11 @@
  */
 
 /**
- * Schema for team response (list view - no sensitive data).
+ * Response after restoring filtered content.
  */
-export interface TeamResponse {
-  created_at: string;
-  updated_at: string;
+export interface RestoreResponse {
   id: string;
-  name: string;
+  meeting_id: string;
+  is_restored: boolean;
+  message: string;
 }

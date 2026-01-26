@@ -7,11 +7,8 @@
  */
 
 /**
- * Schema for team response (list view - no sensitive data).
+ * Request body for transcription.
  */
-export interface TeamResponse {
-  created_at: string;
-  updated_at: string;
-  id: string;
-  name: string;
+export interface TranscriptionRequest {
+  enable_chat_filter?: boolean;
 }

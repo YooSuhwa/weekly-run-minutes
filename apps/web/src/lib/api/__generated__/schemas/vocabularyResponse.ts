@@ -5,13 +5,17 @@
  * WeeklyRun - AI Meeting Orchestration API
  * OpenAPI spec version: 0.1.0
  */
+import type { VocabularyCategory } from './vocabularyCategory';
 
 /**
- * Schema for team response (list view - no sensitive data).
+ * Schema for vocabulary response.
  */
-export interface TeamResponse {
+export interface VocabularyResponse {
   created_at: string;
   updated_at: string;
   id: string;
-  name: string;
+  team_id: string;
+  term: string;
+  correction: string;
+  category: VocabularyCategory;
 }

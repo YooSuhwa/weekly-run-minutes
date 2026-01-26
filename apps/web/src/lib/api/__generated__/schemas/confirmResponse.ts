@@ -7,11 +7,11 @@
  */
 
 /**
- * Schema for team response (list view - no sensitive data).
+ * Response after confirming content as casual talk.
  */
-export interface TeamResponse {
-  created_at: string;
-  updated_at: string;
+export interface ConfirmResponse {
   id: string;
-  name: string;
+  meeting_id: string;
+  is_confirmed: boolean;
+  message: string;
 }

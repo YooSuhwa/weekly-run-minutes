@@ -6,10 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { MeetingStatus } from './meetingStatus';
+import type { MeetingType } from './meetingType';
 
 export type ListMeetingsApiV1MeetingsGetParams = {
 team_id?: string | null;
 status?: MeetingStatus | null;
+meeting_type?: MeetingType | null;
 from_date?: string | null;
 to_date?: string | null;
 };
