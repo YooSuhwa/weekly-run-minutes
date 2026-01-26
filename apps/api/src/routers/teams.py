@@ -3,6 +3,7 @@
 from typing import Annotated
 from uuid import UUID
 
+import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,11 +12,14 @@ from sqlalchemy.orm import selectinload
 from src.lib.dependencies import get_db
 from src.models import Team, TeamMember
 from src.schemas.team import (
+    TeamAuthRequest,
+    TeamAuthResponse,
     TeamCreate,
     TeamMemberCreate,
     TeamMemberResponse,
     TeamMemberUpdate,
     TeamResponse,
+    TeamUpdate,
     TeamWithMembers,
 )
 
@@ -25,11 +29,32 @@ DB = Annotated[AsyncSession, Depends(get_db)]
 router = APIRouter()
 
 
+def hash_password(password: str) -> str:
+    """Hash a password using bcrypt.
+
+    Note: bcrypt has a 72-byte limit. We truncate to 72 bytes to avoid errors
+    while still providing strong security (72 bytes is plenty for password security).
+    """
+    # Encode to UTF-8 and truncate to 72 bytes (bcrypt limit)
+    password_bytes = password.encode("utf-8")[:72]
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password_bytes, salt)
+    return hashed.decode("utf-8")
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password against a hash."""
+    # Apply same truncation as hash_password
+    password_bytes = plain_password.encode("utf-8")[:72]
+    hashed_bytes = hashed_password.encode("utf-8")
+    return bcrypt.checkpw(password_bytes, hashed_bytes)
+
+
 @router.get("", response_model=list[TeamResponse])
 async def list_teams(
     db: DB,
 ) -> list[Team]:
-    """List all teams."""
+    """List all teams (names only, no passwords or sensitive data)."""
     result = await db.execute(select(Team))
     return list(result.scalars().all())
 
@@ -38,9 +63,14 @@ async def list_teams(
 async def create_team(
     data: TeamCreate,
     db: DB,
-) -> Team:
-    """Create a new team with optional members."""
-    team = Team(name=data.name)
+) -> TeamWithMembers:
+    """Create a new team with optional password and members."""
+    team = Team(
+        name=data.name,
+        password_hash=hash_password(data.password) if data.password else None,
+        confluence_base_url=data.confluence_base_url,
+        confluence_space_key=data.confluence_space_key,
+    )
     db.add(team)
     await db.flush()
 
@@ -55,14 +85,35 @@ async def create_team(
 
     await db.commit()
     await db.refresh(team, ["members"])
-    return team
+
+    return TeamWithMembers(
+        id=team.id,
+        name=team.name,
+        confluence_base_url=team.confluence_base_url,
+        confluence_space_key=team.confluence_space_key,
+        has_password=team.password_hash is not None,
+        created_at=team.created_at,
+        updated_at=team.updated_at,
+        members=[
+            TeamMemberResponse(
+                id=m.id,
+                team_id=m.team_id,
+                name=m.name,
+                presentation_order=m.presentation_order,
+                is_active=m.is_active,
+                created_at=m.created_at,
+                updated_at=m.updated_at,
+            )
+            for m in team.members
+        ],
+    )
 
 
 @router.get("/{team_id}", response_model=TeamWithMembers)
 async def get_team(
     team_id: UUID,
     db: DB,
-) -> Team:
+) -> TeamWithMembers:
     """Get a team by ID with members."""
     result = await db.execute(
         select(Team).where(Team.id == team_id).options(selectinload(Team.members))
@@ -73,7 +124,87 @@ async def get_team(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Team not found",
         )
-    return team
+
+    return TeamWithMembers(
+        id=team.id,
+        name=team.name,
+        confluence_base_url=team.confluence_base_url,
+        confluence_space_key=team.confluence_space_key,
+        has_password=team.password_hash is not None,
+        created_at=team.created_at,
+        updated_at=team.updated_at,
+        members=[
+            TeamMemberResponse(
+                id=m.id,
+                team_id=m.team_id,
+                name=m.name,
+                presentation_order=m.presentation_order,
+                is_active=m.is_active,
+                created_at=m.created_at,
+                updated_at=m.updated_at,
+            )
+            for m in team.members
+        ],
+    )
+
+
+@router.put("/{team_id}", response_model=TeamWithMembers)
+async def update_team(
+    team_id: UUID,
+    data: TeamUpdate,
+    db: DB,
+) -> TeamWithMembers:
+    """Update a team."""
+    result = await db.execute(select(Team).where(Team.id == team_id))
+    team = result.scalar_one_or_none()
+    if not team:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Team not found",
+        )
+
+    update_data = data.model_dump(exclude_unset=True)
+
+    # Handle password separately
+    if "password" in update_data:
+        password = update_data.pop("password")
+        if password:
+            team.password_hash = hash_password(password)
+        # If password is explicitly None, keep existing password
+
+    # Update other fields
+    for field, value in update_data.items():
+        setattr(team, field, value)
+
+    await db.commit()
+
+    # Re-fetch team with members to ensure fresh data
+    result = await db.execute(
+        select(Team).where(Team.id == team_id).options(selectinload(Team.members))
+    )
+    updated_team = result.scalar_one()  # Safe: we know team exists after update
+
+    return TeamWithMembers(
+        id=updated_team.id,
+        name=updated_team.name,
+        confluence_base_url=updated_team.confluence_base_url,
+        confluence_space_key=updated_team.confluence_space_key,
+        has_password=updated_team.password_hash is not None,
+        created_at=updated_team.created_at,
+        updated_at=updated_team.updated_at,
+        members=[
+            TeamMemberResponse(
+                id=m.id,
+                team_id=m.team_id,
+                name=m.name,
+                presentation_order=m.presentation_order,
+                is_active=m.is_active,
+                created_at=m.created_at,
+                updated_at=m.updated_at,
+            )
+            for m in updated_team.members
+        ],
+    )
 
 
 @router.delete("/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -91,6 +222,38 @@ async def delete_team(
         )
     await db.delete(team)
     await db.commit()
+
+
+@router.post("/{team_id}/auth", response_model=TeamAuthResponse)
+async def authenticate_team(
+    team_id: UUID,
+    data: TeamAuthRequest,
+    db: DB,
+) -> TeamAuthResponse:
+    """Authenticate with team password. Returns team_id on success."""
+    result = await db.execute(select(Team).where(Team.id == team_id))
+    team = result.scalar_one_or_none()
+    if not team:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Team not found",
+        )
+
+    # If team has no password, auth always fails
+    if not team.password_hash:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Team has no password set",
+        )
+
+    # Verify password
+    if not verify_password(data.password, team.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid password",
+        )
+
+    return TeamAuthResponse(team_id=team.id, team_name=team.name)
 
 
 # Team Member endpoints

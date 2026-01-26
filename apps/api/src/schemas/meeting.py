@@ -5,8 +5,17 @@ from uuid import UUID
 
 from pydantic import Field
 
-from src.models.meeting import MeetingMode, MeetingStatus
+from src.models.meeting import MeetingMode, MeetingStatus, MeetingType
 from src.schemas.common import BaseSchema, IDSchema, TimestampSchema
+
+
+class AgendaItem(BaseSchema):
+    """Schema for a single agenda item in general meetings."""
+
+    title: str = Field(..., min_length=1, max_length=200)
+    description: str | None = Field(None, max_length=1000)
+    presenter: str | None = Field(None, max_length=100)
+    duration_minutes: int | None = Field(None, ge=1, le=480)
 
 
 class MeetingCreate(BaseSchema):
@@ -16,6 +25,8 @@ class MeetingCreate(BaseSchema):
     meeting_date: date
     title: str = Field(..., min_length=1, max_length=200)
     meeting_mode: MeetingMode = MeetingMode.UPLOAD
+    meeting_type: MeetingType = MeetingType.WEEKLY_REPORT
+    agenda_items: list[AgendaItem] | None = None
 
 
 class MeetingStatusUpdate(BaseSchema):
@@ -59,9 +70,11 @@ class MeetingResponse(IDSchema, TimestampSchema):
     title: str
     status: MeetingStatus
     meeting_mode: str
+    meeting_type: str
     error_message: str | None
     confluence_page_id: str | None
     confluence_page_url: str | None
+    agenda_items: list[AgendaItem] | None
 
 
 class MeetingWithDetails(MeetingResponse):

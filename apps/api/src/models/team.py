@@ -10,6 +10,7 @@ from src.models.base import BaseModel
 
 if TYPE_CHECKING:
     from src.models.meeting import Meeting
+    from src.models.vocabulary import Vocabulary
 
 
 class Team(BaseModel):
@@ -18,6 +19,11 @@ class Team(BaseModel):
     __tablename__ = "teams"
 
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Confluence integration
+    confluence_base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    confluence_space_key: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Relationships
     members: Mapped[list["TeamMember"]] = relationship(
@@ -28,6 +34,11 @@ class Team(BaseModel):
     )
     meetings: Mapped[list["Meeting"]] = relationship(
         "Meeting",
+        back_populates="team",
+        cascade="all, delete-orphan",
+    )
+    vocabularies: Mapped[list["Vocabulary"]] = relationship(
+        "Vocabulary",
         back_populates="team",
         cascade="all, delete-orphan",
     )
