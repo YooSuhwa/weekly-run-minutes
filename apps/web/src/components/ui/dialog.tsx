@@ -10,6 +10,7 @@ import {
   useEffect,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
 interface DialogContextValue {
@@ -87,6 +88,12 @@ interface DialogContentProps extends React.HTMLAttributes<HTMLDivElement> {
 const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
   ({ className, children, ...props }, ref) => {
     const { open, onOpenChange } = useDialogContext();
+    const [mounted, setMounted] = useState(false);
+
+    // Mount check for portal
+    useEffect(() => {
+      setMounted(true);
+    }, []);
 
     // Handle escape key
     useEffect(() => {
@@ -114,9 +121,9 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
       };
     }, [open]);
 
-    if (!open) return null;
+    if (!open || !mounted) return null;
 
-    return (
+    const content = (
       <div className="fixed inset-0 z-50 flex items-center justify-center">
         {/* Overlay */}
         <div
@@ -148,6 +155,8 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
         </div>
       </div>
     );
+
+    return createPortal(content, document.body);
   },
 );
 DialogContent.displayName = "DialogContent";
