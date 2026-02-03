@@ -1,18 +1,47 @@
 "use client";
 
-import { useAtomValue } from "jotai";
-import { BookText, Download, Filter, Pencil, Plus, Search, Trash2, Upload, X } from "lucide-react";
+import { useAtomValue, useSetAtom } from "jotai";
+import {
+  BookText,
+  Cloud,
+  Download,
+  Filter,
+  Key,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  Upload,
+  Users,
+  X,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { currentTeamAtom } from "@/atoms/team";
+import { selectedTeamIdAtom } from "@/atoms/team";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import type {
   VocabularyBulkImportItem,
   VocabularyCategory,
   VocabularyResponse,
 } from "@/lib/api/__generated__/schemas";
-import { useListTeamsApiV1TeamsGet } from "@/lib/api/__generated__/teams/teams";
+import {
+  useCreateTeamApiV1TeamsPost,
+  useDeleteTeamApiV1TeamsTeamIdDelete,
+  useGetTeamApiV1TeamsTeamIdGet,
+  useListTeamsApiV1TeamsGet,
+  useUpdateTeamApiV1TeamsTeamIdPut,
+} from "@/lib/api/__generated__/teams/teams";
 import {
   useBulkImportVocabularyApiV1TeamsTeamIdVocabularyImportPost,
   useCreateVocabularyApiV1TeamsTeamIdVocabularyPost,
@@ -30,7 +59,7 @@ const CATEGORY_LABELS: Record<VocabularyCategory, string> = {
 
 const CATEGORY_OPTIONS: VocabularyCategory[] = ["terminology", "abbreviation", "name", "other"];
 
-type TabType = "vocabulary" | "filtering";
+type TabType = "team" | "vocabulary" | "filtering" | "confluence";
 
 interface VocabularyFormData {
   term: string;
@@ -46,8 +75,10 @@ const defaultFormData: VocabularyFormData = {
 
 export default function SettingsPage() {
   const toast = useToast();
-  const currentTeam = useAtomValue(currentTeamAtom);
-  const [activeTab, setActiveTab] = useState<TabType>("vocabulary");
+  const router = useRouter();
+  const selectedTeamId = useAtomValue(selectedTeamIdAtom);
+  const setSelectedTeamId = useSetAtom(selectedTeamIdAtom);
+  const [activeTab, setActiveTab] = useState<TabType>("team");
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<VocabularyCategory | "all">("all");
 
@@ -58,13 +89,93 @@ export default function SettingsPage() {
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [bulkImportText, setBulkImportText] = useState("");
 
-  // Chat filtering settings
+  // Chat filtering settings (synced with team data)
   const [filteringEnabled, setFilteringEnabled] = useState(true);
   const [confidenceThreshold, setConfidenceThreshold] = useState(70);
 
+  // Confluence settings
+  const [confluenceBaseUrl, setConfluenceBaseUrl] = useState("");
+  const [confluenceSpaceKey, setConfluenceSpaceKey] = useState("");
+  const [confluenceUsername, setConfluenceUsername] = useState("");
+  const [confluenceToken, setConfluenceToken] = useState("");
+  const [hasExistingToken, setHasExistingToken] = useState(false);
+
+  // Team management states
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [newTeamName, setNewTeamName] = useState("");
+  const [newTeamPassword, setNewTeamPassword] = useState("");
+
   // Get team ID from atom or fallback to first team
-  const { data: teams } = useListTeamsApiV1TeamsGet();
-  const teamId = currentTeam?.id ?? teams?.[0]?.id ?? "";
+  const { data: teams, refetch: refetchTeams } = useListTeamsApiV1TeamsGet();
+  const teamId = selectedTeamId ?? teams?.[0]?.id ?? "";
+
+  // Fetch team details to sync settings
+  const { data: teamData, refetch: refetchTeam } = useGetTeamApiV1TeamsTeamIdGet(teamId, {
+    query: { enabled: !!teamId },
+  });
+
+  // Update team mutation
+  const updateTeam = useUpdateTeamApiV1TeamsTeamIdPut({
+    mutation: {
+      onSuccess: () => {
+        refetchTeam();
+        toast.success("설정이 저장되었습니다");
+      },
+      onError: () => {
+        toast.error("설정 저장에 실패했습니다");
+      },
+    },
+  });
+
+  // Create team mutation
+  const createTeam = useCreateTeamApiV1TeamsPost({
+    mutation: {
+      onSuccess: (data) => {
+        refetchTeams();
+        setShowCreateDialog(false);
+        setNewTeamName("");
+        setNewTeamPassword("");
+        setSelectedTeamId(data.id);
+        toast.success(`${data.name} 팀이 생성되었습니다`);
+      },
+      onError: () => {
+        toast.error("팀 생성에 실패했습니다");
+      },
+    },
+  });
+
+  // Delete team mutation
+  const deleteTeam = useDeleteTeamApiV1TeamsTeamIdDelete({
+    mutation: {
+      onSuccess: () => {
+        refetchTeams();
+        setShowDeleteDialog(false);
+        setSelectedTeamId(null);
+        toast.success("팀이 삭제되었습니다");
+        router.push("/teams");
+      },
+      onError: () => {
+        toast.error("팀 삭제에 실패했습니다");
+      },
+    },
+  });
+
+  // Sync settings from team data
+  useEffect(() => {
+    if (teamData) {
+      setFilteringEnabled(teamData.filtering_enabled ?? true);
+      setConfidenceThreshold(Math.round((teamData.filtering_confidence_threshold ?? 0.7) * 100));
+      setConfluenceBaseUrl(teamData.confluence_base_url ?? "");
+      setConfluenceSpaceKey(teamData.confluence_space_key ?? "");
+      setConfluenceUsername(teamData.confluence_username ?? "");
+      setHasExistingToken(teamData.has_confluence_token ?? false);
+      setConfluenceToken(""); // Never show existing token
+    }
+  }, [teamData]);
 
   // Fetch vocabulary
   const { data: vocabularyList, refetch: refetchVocabulary } =
@@ -263,15 +374,27 @@ export default function SettingsPage() {
     <div className="mx-auto max-w-4xl px-4 py-8">
       <div className="mb-8">
         <h1 className="text-2xl font-bold">설정</h1>
-        <p className="text-sm text-muted-foreground">{currentTeam?.name ?? "팀"} 설정 관리</p>
+        <p className="text-sm text-muted-foreground">{teamData?.name ?? "팀"} 설정 관리</p>
       </div>
 
       {/* Tab Navigation */}
-      <div className="mb-6 flex gap-2 border-b border-border">
+      <div className="mb-6 flex gap-2 border-b border-border overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => setActiveTab("team")}
+          className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
+            activeTab === "team"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Users className="h-4 w-4" />
+          팀 관리
+        </button>
         <button
           type="button"
           onClick={() => setActiveTab("vocabulary")}
-          className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+          className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
             activeTab === "vocabulary"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -283,7 +406,7 @@ export default function SettingsPage() {
         <button
           type="button"
           onClick={() => setActiveTab("filtering")}
-          className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+          className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
             activeTab === "filtering"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -292,7 +415,117 @@ export default function SettingsPage() {
           <Filter className="h-4 w-4" />
           잡담 필터링
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("confluence")}
+          className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
+            activeTab === "confluence"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Cloud className="h-4 w-4" />
+          Confluence
+        </button>
       </div>
+
+      {/* Team Management Tab */}
+      {activeTab === "team" && (
+        <div className="space-y-6">
+          {/* Current Team Info */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">현재 팀 정보</CardTitle>
+              <CardDescription>팀 이름 및 비밀번호를 관리합니다</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium">팀 이름</label>
+                <p className="text-lg font-semibold">{teamData?.name ?? "-"}</p>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">비밀번호</p>
+                  <p className="text-sm text-muted-foreground">
+                    {teamData?.has_password ? "비밀번호가 설정되어 있습니다" : "비밀번호가 설정되지 않았습니다"}
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => setShowPasswordDialog(true)}>
+                  <Key className="mr-2 h-4 w-4" />
+                  {teamData?.has_password ? "비밀번호 변경" : "비밀번호 설정"}
+                </Button>
+              </div>
+
+              <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
+                <h4 className="mb-2 font-medium text-destructive">위험 구역</h4>
+                <p className="mb-3 text-sm text-muted-foreground">
+                  팀을 삭제하면 모든 회의, 회의록, 설정이 영구적으로 삭제됩니다.
+                </p>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setShowDeleteDialog(true)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  팀 삭제
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Create New Team */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">새 팀 만들기</CardTitle>
+              <CardDescription>새로운 팀을 생성합니다</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button onClick={() => setShowCreateDialog(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                새 팀 만들기
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Team List */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">모든 팀</CardTitle>
+              <CardDescription>등록된 모든 팀 목록</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {teams && teams.length > 0 ? (
+                <div className="divide-y divide-border rounded-lg border">
+                  {teams.map((team) => (
+                    <div
+                      key={team.id}
+                      className="flex items-center justify-between px-4 py-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Users className="h-5 w-5 text-muted-foreground" />
+                        <span className={team.id === teamId ? "font-medium" : ""}>
+                          {team.name}
+                        </span>
+                        {team.id === teamId && (
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                            현재 팀
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        {new Date(team.created_at).toLocaleDateString("ko-KR")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="py-4 text-center text-muted-foreground">등록된 팀이 없습니다</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Vocabulary Tab */}
       {activeTab === "vocabulary" && (
@@ -656,12 +889,288 @@ SDK,에스디케이,abbreviation
               </div>
 
               <div className="flex justify-end">
-                <Button onClick={() => toast.success("설정이 저장되었습니다")}>설정 저장</Button>
+                <Button
+                  onClick={() => {
+                    if (!teamId) return;
+                    updateTeam.mutate({
+                      teamId,
+                      data: {
+                        filtering_enabled: filteringEnabled,
+                        filtering_confidence_threshold: confidenceThreshold / 100,
+                      },
+                    });
+                  }}
+                  disabled={updateTeam.isPending}
+                >
+                  {updateTeam.isPending ? "저장 중..." : "설정 저장"}
+                </Button>
               </div>
             </CardContent>
           </Card>
         </div>
       )}
+
+      {/* Confluence Tab */}
+      {activeTab === "confluence" && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Confluence 연동 설정</CardTitle>
+              <CardDescription>
+                팀별 Confluence 연동 정보를 설정합니다. 비워두면 전역 설정이 사용됩니다.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <label htmlFor="confluence-url" className="mb-1 block text-sm font-medium">
+                  Confluence Base URL
+                </label>
+                <input
+                  id="confluence-url"
+                  type="url"
+                  value={confluenceBaseUrl}
+                  onChange={(e) => setConfluenceBaseUrl(e.target.value)}
+                  placeholder="https://your-domain.atlassian.net/wiki"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="confluence-space" className="mb-1 block text-sm font-medium">
+                  Space Key
+                </label>
+                <input
+                  id="confluence-space"
+                  type="text"
+                  value={confluenceSpaceKey}
+                  onChange={(e) => setConfluenceSpaceKey(e.target.value)}
+                  placeholder="TEAM"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Space 목록에서 확인할 수 있는 Space Key
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="confluence-username" className="mb-1 block text-sm font-medium">
+                  사용자 이메일
+                </label>
+                <input
+                  id="confluence-username"
+                  type="email"
+                  value={confluenceUsername}
+                  onChange={(e) => setConfluenceUsername(e.target.value)}
+                  placeholder="user@example.com"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="confluence-token" className="mb-1 block text-sm font-medium">
+                  API Token
+                </label>
+                <input
+                  id="confluence-token"
+                  type="password"
+                  value={confluenceToken}
+                  onChange={(e) => setConfluenceToken(e.target.value)}
+                  placeholder={hasExistingToken ? "••••••••••••" : "Atlassian API Token"}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {hasExistingToken
+                    ? "기존 토큰이 설정되어 있습니다. 새 토큰을 입력하면 교체됩니다."
+                    : "Atlassian 계정 설정에서 API Token을 생성하세요"}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-border bg-muted/30 p-4">
+                <h4 className="mb-2 font-medium">API Token 생성 방법</h4>
+                <ol className="space-y-1 text-sm text-muted-foreground list-decimal list-inside">
+                  <li>Atlassian 계정 설정으로 이동</li>
+                  <li>Security → API tokens 선택</li>
+                  <li>Create API token 클릭</li>
+                  <li>토큰 이름을 입력하고 생성</li>
+                  <li>생성된 토큰을 복사하여 위에 입력</li>
+                </ol>
+              </div>
+
+              <div className="flex justify-end">
+                <Button
+                  onClick={() => {
+                    if (!teamId) return;
+                    updateTeam.mutate({
+                      teamId,
+                      data: {
+                        confluence_base_url: confluenceBaseUrl || null,
+                        confluence_space_key: confluenceSpaceKey || null,
+                        confluence_username: confluenceUsername || null,
+                        // Only send token if user entered a new one
+                        ...(confluenceToken ? { confluence_token: confluenceToken } : {}),
+                      },
+                    });
+                  }}
+                  disabled={updateTeam.isPending}
+                >
+                  {updateTeam.isPending ? "저장 중..." : "설정 저장"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Password Change Dialog */}
+      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>비밀번호 {teamData?.has_password ? "변경" : "설정"}</DialogTitle>
+            <DialogDescription>
+              팀에 접근하기 위한 비밀번호를 {teamData?.has_password ? "변경" : "설정"}합니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="new-password" className="mb-1 block text-sm font-medium">
+                새 비밀번호
+              </label>
+              <Input
+                id="new-password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="새 비밀번호 입력"
+              />
+            </div>
+            <div>
+              <label htmlFor="confirm-password" className="mb-1 block text-sm font-medium">
+                비밀번호 확인
+              </label>
+              <Input
+                id="confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="비밀번호 다시 입력"
+              />
+            </div>
+            {newPassword && confirmPassword && newPassword !== confirmPassword && (
+              <p className="text-sm text-destructive">비밀번호가 일치하지 않습니다</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPasswordDialog(false)}>
+              취소
+            </Button>
+            <Button
+              onClick={() => {
+                if (!teamId || !newPassword || newPassword !== confirmPassword) return;
+                updateTeam.mutate(
+                  { teamId, data: { password: newPassword } },
+                  {
+                    onSuccess: () => {
+                      setShowPasswordDialog(false);
+                      setNewPassword("");
+                      setConfirmPassword("");
+                    },
+                  },
+                );
+              }}
+              disabled={!newPassword || newPassword !== confirmPassword || updateTeam.isPending}
+            >
+              {updateTeam.isPending ? "저장 중..." : "저장"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Team Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>팀 삭제</DialogTitle>
+            <DialogDescription>
+              정말로 &quot;{teamData?.name}&quot; 팀을 삭제하시겠습니까?
+              <br />
+              이 작업은 되돌릴 수 없으며, 모든 회의와 회의록이 삭제됩니다.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              취소
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (!teamId) return;
+                deleteTeam.mutate({ teamId });
+              }}
+              disabled={deleteTeam.isPending}
+            >
+              {deleteTeam.isPending ? "삭제 중..." : "삭제"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Team Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>새 팀 만들기</DialogTitle>
+            <DialogDescription>새로운 팀을 생성합니다.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="team-name" className="mb-1 block text-sm font-medium">
+                팀 이름
+              </label>
+              <Input
+                id="team-name"
+                type="text"
+                value={newTeamName}
+                onChange={(e) => setNewTeamName(e.target.value)}
+                placeholder="팀 이름 입력"
+              />
+            </div>
+            <div>
+              <label htmlFor="team-password" className="mb-1 block text-sm font-medium">
+                비밀번호 (선택)
+              </label>
+              <Input
+                id="team-password"
+                type="password"
+                value={newTeamPassword}
+                onChange={(e) => setNewTeamPassword(e.target.value)}
+                placeholder="비밀번호 입력 (선택)"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                비밀번호를 설정하면 팀 접근 시 인증이 필요합니다
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+              취소
+            </Button>
+            <Button
+              onClick={() => {
+                if (!newTeamName.trim()) return;
+                createTeam.mutate({
+                  data: {
+                    name: newTeamName.trim(),
+                    password: newTeamPassword || undefined,
+                  },
+                });
+              }}
+              disabled={!newTeamName.trim() || createTeam.isPending}
+            >
+              {createTeam.isPending ? "생성 중..." : "생성"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

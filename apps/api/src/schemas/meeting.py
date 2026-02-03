@@ -29,6 +29,14 @@ class MeetingCreate(BaseSchema):
     agenda_items: list[AgendaItem] | None = None
 
 
+class MeetingUpdate(BaseSchema):
+    """Schema for updating a meeting."""
+
+    title: str | None = Field(None, min_length=1, max_length=200)
+    meeting_date: date | None = None
+    agenda_items: list[AgendaItem] | None = None
+
+
 class MeetingStatusUpdate(BaseSchema):
     """Schema for updating meeting status."""
 

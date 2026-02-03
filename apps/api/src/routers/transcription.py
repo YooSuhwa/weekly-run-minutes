@@ -252,7 +252,9 @@ async def start_transcription(
             detail="No recording uploaded for this meeting",
         )
 
-    status_val = meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    status_val = (
+        meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    )
 
     if status_val == "transcribing":
         raise HTTPException(

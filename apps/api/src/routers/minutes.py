@@ -133,9 +133,7 @@ async def generate_minutes_task(meeting_id: UUID) -> None:
             vocab_service = VocabularyService()
             vocabulary = await vocab_service.get_team_vocabulary(db, meeting.team.id)
             vocabulary_prompt = (
-                vocab_service.format_vocabulary_for_prompt(vocabulary)
-                if vocabulary
-                else None
+                vocab_service.format_vocabulary_for_prompt(vocabulary) if vocabulary else None
             )
 
             # Determine meeting type and generate accordingly
@@ -291,7 +289,9 @@ async def start_minutes_generation(
         )
 
     # Check if transcription is done
-    status_val = meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    status_val = (
+        meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    )
     allowed_statuses = {"transcribed", "generating_minutes", "draft_ready", "published"}
     if status_val not in allowed_statuses:
         raise HTTPException(
@@ -387,10 +387,16 @@ async def publish_minutes_to_confluence(
     """Publish meeting minutes to Confluence.
 
     Creates a new Confluence page with the minutes content.
+    Uses team-specific Confluence settings if available.
     """
-    # Get meeting with minutes
+    # Get meeting with minutes and team
     result = await db.execute(
-        select(Meeting).where(Meeting.id == meeting_id).options(selectinload(Meeting.minutes))
+        select(Meeting)
+        .where(Meeting.id == meeting_id)
+        .options(
+            selectinload(Meeting.minutes),
+            selectinload(Meeting.team),
+        )
     )
     meeting = result.scalar_one_or_none()
 
@@ -415,8 +421,15 @@ async def publish_minutes_to_confluence(
     # Get the content to publish (edited if available, otherwise original)
     content = meeting.minutes.edited_content or meeting.minutes.content_markdown
 
-    # Create Confluence page
-    confluence = ConfluenceService()
+    # Use team-specific Confluence settings if available (P2: Multi-team support)
+    team = meeting.team
+    confluence = ConfluenceService.from_team(
+        confluence_base_url=team.confluence_base_url if team else None,
+        confluence_username=team.confluence_username if team else None,
+        confluence_token=team.confluence_token if team else None,
+        confluence_space_key=team.confluence_space_key if team else None,
+    )
+
     try:
         page_result = await confluence.upload_meeting_minutes(
             title=f"{meeting.meeting_date.isoformat()} {meeting.title} 회의록",

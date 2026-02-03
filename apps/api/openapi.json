@@ -1126,6 +1126,58 @@
           }
         }
       },
+      "put": {
+        "tags": [
+          "meetings"
+        ],
+        "summary": "Update Meeting",
+        "description": "Update meeting details.\n\nP2 Feature: Supports updating agenda_items for general meetings.",
+        "operationId": "update_meeting_api_v1_meetings__meeting_id__put",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MeetingUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeetingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "meetings"
@@ -1926,7 +1978,7 @@
           "minutes"
         ],
         "summary": "Publish Minutes To Confluence",
-        "description": "Publish meeting minutes to Confluence.\n\nCreates a new Confluence page with the minutes content.",
+        "description": "Publish meeting minutes to Confluence.\n\nCreates a new Confluence page with the minutes content.\nUses team-specific Confluence settings if available.",
         "operationId": "publish_minutes_to_confluence_api_v1_minutes_meetings__meeting_id__publish_post",
         "parameters": [
           {
@@ -3563,6 +3615,52 @@
         "title": "MeetingType",
         "description": "Meeting type enum - P2 feature."
       },
+      "MeetingUpdate": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "meeting_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meeting Date"
+          },
+          "agenda_items": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AgendaItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agenda Items"
+          }
+        },
+        "type": "object",
+        "title": "MeetingUpdate",
+        "description": "Schema for updating a meeting."
+      },
       "MeetingWithDetails": {
         "properties": {
           "created_at": {
@@ -4088,6 +4186,42 @@
             ],
             "title": "Confluence Space Key"
           },
+          "confluence_username": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confluence Username"
+          },
+          "confluence_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confluence Token"
+          },
+          "filtering_enabled": {
+            "type": "boolean",
+            "title": "Filtering Enabled",
+            "default": true
+          },
+          "filtering_confidence_threshold": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Filtering Confidence Threshold",
+            "default": 0.7
+          },
           "members": {
             "anyOf": [
               {
@@ -4243,6 +4377,11 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "has_password": {
+            "type": "boolean",
+            "title": "Has Password",
+            "default": false
           }
         },
         "type": "object",
@@ -4306,6 +4445,54 @@
               }
             ],
             "title": "Confluence Space Key"
+          },
+          "confluence_username": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confluence Username"
+          },
+          "confluence_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confluence Token"
+          },
+          "filtering_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filtering Enabled"
+          },
+          "filtering_confidence_threshold": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filtering Confidence Threshold"
           }
         },
         "type": "object",
@@ -4333,6 +4520,11 @@
             "type": "string",
             "title": "Name"
           },
+          "has_password": {
+            "type": "boolean",
+            "title": "Has Password",
+            "default": false
+          },
           "confluence_base_url": {
             "anyOf": [
               {
@@ -4355,10 +4547,31 @@
             ],
             "title": "Confluence Space Key"
           },
-          "has_password": {
+          "confluence_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confluence Username"
+          },
+          "has_confluence_token": {
             "type": "boolean",
-            "title": "Has Password",
+            "title": "Has Confluence Token",
             "default": false
+          },
+          "filtering_enabled": {
+            "type": "boolean",
+            "title": "Filtering Enabled",
+            "default": true
+          },
+          "filtering_confidence_threshold": {
+            "type": "number",
+            "title": "Filtering Confidence Threshold",
+            "default": 0.7
           },
           "members": {
             "items": {

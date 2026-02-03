@@ -20,11 +20,47 @@ class ConfluenceError(Exception):
 class ConfluenceService:
     """Confluence API v2 service for fetching and uploading pages."""
 
-    def __init__(self) -> None:
-        self.base_url = settings.CONFLUENCE_BASE_URL.rstrip("/")
+    def __init__(
+        self,
+        base_url: str | None = None,
+        username: str | None = None,
+        token: str | None = None,
+        space_id: str | None = None,
+    ) -> None:
+        """Initialize Confluence service with optional team-specific credentials.
+
+        Args:
+            base_url: Team-specific Confluence base URL (falls back to global settings)
+            username: Team-specific Confluence username (falls back to global settings)
+            token: Team-specific Confluence token (falls back to global settings)
+            space_id: Team-specific space ID/key (falls back to global settings)
+        """
+        self.base_url = (base_url or settings.CONFLUENCE_BASE_URL).rstrip("/")
         self.api_url = f"{self.base_url}/api/v2"
-        self.auth = (settings.CONFLUENCE_USERNAME, settings.CONFLUENCE_TOKEN)
-        self.space_id = settings.CONFLUENCE_SPACE_ID
+        self.auth = (
+            username or settings.CONFLUENCE_USERNAME,
+            token or settings.CONFLUENCE_TOKEN,
+        )
+        self.space_id = space_id or settings.CONFLUENCE_SPACE_ID
+
+    @classmethod
+    def from_team(
+        cls,
+        confluence_base_url: str | None,
+        confluence_username: str | None,
+        confluence_token: str | None,
+        confluence_space_key: str | None,
+    ) -> "ConfluenceService":
+        """Create a ConfluenceService from team-specific settings.
+
+        Falls back to global settings for any missing team settings.
+        """
+        return cls(
+            base_url=confluence_base_url,
+            username=confluence_username,
+            token=confluence_token,
+            space_id=confluence_space_key,
+        )
 
     def _get_headers(self) -> dict[str, str]:
         """Get common request headers."""
@@ -197,12 +233,23 @@ class ConfluenceService:
             },
         }
 
-        logger.info("Creating Confluence page", title=title, parent_id=parent_id)
+        logger.info(
+            "Creating Confluence page",
+            title=title,
+            parent_id=payload["parentId"],
+            space_id=payload["spaceId"],
+        )
 
         async with httpx.AsyncClient(auth=self.auth, timeout=30.0) as client:
             response = await client.post(url, headers=self._get_headers(), json=payload)
 
             if response.status_code not in (200, 201):
+                logger.error(
+                    "Confluence API error",
+                    status_code=response.status_code,
+                    response_body=response.text,
+                    request_url=url,
+                )
                 raise ConfluenceError(
                     f"Failed to create page: {response.text}",
                     response.status_code,
@@ -302,69 +349,18 @@ class ConfluenceService:
     def _markdown_to_confluence_html(self, markdown_content: str) -> str:
         """Convert markdown to Confluence storage format HTML.
 
-        Basic conversion for meeting minutes structure.
+        Uses the markdown library for proper conversion.
         """
-        import re
+        import markdown
 
-        lines = markdown_content.split("\n")
-        html_parts: list[str] = []
-        in_list = False
-        list_type = ""
+        # Convert markdown to HTML with common extensions
+        html = markdown.markdown(
+            markdown_content,
+            extensions=[
+                "tables",
+                "fenced_code",
+                "nl2br",  # Convert newlines to <br>
+            ],
+        )
 
-        for line in lines:
-            stripped = line.strip()
-
-            # Headers
-            if stripped.startswith("# "):
-                if in_list:
-                    html_parts.append(f"</{list_type}>")
-                    in_list = False
-                html_parts.append(f"<h1>{stripped[2:]}</h1>")
-            elif stripped.startswith("## "):
-                if in_list:
-                    html_parts.append(f"</{list_type}>")
-                    in_list = False
-                html_parts.append(f"<h2>{stripped[3:]}</h2>")
-            elif stripped.startswith("### "):
-                if in_list:
-                    html_parts.append(f"</{list_type}>")
-                    in_list = False
-                html_parts.append(f"<h3>{stripped[4:]}</h3>")
-            # Unordered list
-            elif stripped.startswith("- ") or stripped.startswith("* "):
-                if not in_list or list_type != "ul":
-                    if in_list:
-                        html_parts.append(f"</{list_type}>")
-                    html_parts.append("<ul>")
-                    in_list = True
-                    list_type = "ul"
-                html_parts.append(f"<li>{stripped[2:]}</li>")
-            # Ordered list
-            elif re.match(r"^\d+\.\s", stripped):
-                if not in_list or list_type != "ol":
-                    if in_list:
-                        html_parts.append(f"</{list_type}>")
-                    html_parts.append("<ol>")
-                    in_list = True
-                    list_type = "ol"
-                content = re.sub(r"^\d+\.\s", "", stripped)
-                html_parts.append(f"<li>{content}</li>")
-            # Empty line
-            elif not stripped:
-                if in_list:
-                    html_parts.append(f"</{list_type}>")
-                    in_list = False
-            # Regular paragraph
-            else:
-                if in_list:
-                    html_parts.append(f"</{list_type}>")
-                    in_list = False
-                # Handle bold and italic
-                text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", stripped)
-                text = re.sub(r"\*(.+?)\*", r"<em>\1</em>", text)
-                html_parts.append(f"<p>{text}</p>")
-
-        if in_list:
-            html_parts.append(f"</{list_type}>")
-
-        return "\n".join(html_parts)
+        return html

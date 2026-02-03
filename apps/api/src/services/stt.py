@@ -94,8 +94,9 @@ class STTService:
             file_content = f.read()
 
         # Prepare multipart form data
+        # ElevenLabs API requires the field name to be "file"
         files = {
-            "audio": (file_path.name, file_content, self._get_mime_type(file_path)),
+            "file": (file_path.name, file_content, self._get_mime_type(file_path)),
         }
 
         data = {
@@ -103,10 +104,10 @@ class STTService:
             "language_code": language_code,
             "diarize": "true",  # Enable speaker diarization
             "tag_audio_events": "false",
-            "timestamps_granularity": "segment",  # Get segment-level timestamps
+            "timestamps_granularity": "word",  # Get word-level timestamps (grouped into segments later)
         }
 
-        async with httpx.AsyncClient(timeout=600.0) as client:  # 10 min timeout for long files
+        async with httpx.AsyncClient(timeout=600.0) as client:
             response = await client.post(
                 self.API_URL,
                 headers=self._get_headers(),

@@ -9,6 +9,7 @@ import { ProgressBar } from "@/components/ui/progress-bar";
 import { useToast } from "@/components/ui/toast";
 import { Weeky } from "@/components/weeky/weeky";
 import { useGetMeetingProgressApiV1MeetingsMeetingIdProgressGet } from "@/lib/api/__generated__/meetings/meetings";
+import { useStartMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost } from "@/lib/api/__generated__/minutes/minutes";
 import { cn } from "@/lib/utils";
 
 const weeklySteps: { key: SttStep; label: string; description: string }[] = [
@@ -38,6 +39,11 @@ export default function ProcessingPage() {
   const meetingId = params.id as string;
   const [stt, setStt] = useAtom(sttAtom);
   const hasCompleted = useRef(false);
+  const hasStartedGeneration = useRef(false);
+
+  // Mutation to start minutes generation
+  const { mutate: startMinutesGeneration } =
+    useStartMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost();
 
   // Initialize STT state on mount
   useEffect(() => {
@@ -81,6 +87,12 @@ export default function ProcessingPage() {
         progress: 66,
         segmentsCount: (progressData.segments_count as number) || 0,
       }));
+
+      // Automatically trigger minutes generation when transcription completes
+      if (!hasStartedGeneration.current) {
+        hasStartedGeneration.current = true;
+        startMinutesGeneration({ meetingId });
+      }
     } else if (status === "generating_minutes") {
       setStt((prev) => ({ ...prev, currentStep: "formatting", progress: 80 }));
       import("../minutes/minutes-editor").catch(() => {});

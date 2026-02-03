@@ -186,7 +186,7 @@ class MinutesGeneratorService:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.3,
-                max_tokens=4096,
+                max_completion_tokens=4096,
             )
 
             raw_content = response.choices[0].message.content or ""
@@ -247,11 +247,7 @@ class MinutesGeneratorService:
                 items = json.loads(json_str)
                 if isinstance(items, list):
                     for item in items:
-                        if (
-                            isinstance(item, dict)
-                            and "original" in item
-                            and "corrected" in item
-                        ):
+                        if isinstance(item, dict) and "original" in item and "corrected" in item:
                             corrections.append(
                                 CorrectionItem(
                                     original=item["original"],
@@ -304,7 +300,7 @@ class MinutesGeneratorService:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.3,
-                max_tokens=4096,
+                max_completion_tokens=4096,
             )
 
             return response.choices[0].message.content or original_minutes

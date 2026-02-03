@@ -1,7 +1,7 @@
 "use client";
 
 import { useAtom } from "jotai";
-import { Check, Link as LinkIcon, Users } from "lucide-react";
+import { Check, Link as LinkIcon, ListTodo, Plus, Trash2, Users } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { confluenceAtom } from "@/atoms/confluence";
@@ -9,10 +9,49 @@ import { recordingAtom } from "@/atoms/recording";
 import { selectedMembersAtom, type TeamMember, teamMembersAtom } from "@/atoms/team";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { FileUpload } from "@/components/ui/file-upload";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { useToast } from "@/components/ui/toast";
-import { useGetMeetingApiV1MeetingsMeetingIdGet } from "@/lib/api/__generated__/meetings/meetings";
+import type { WeeklyReportResponse } from "@/lib/api/__generated__/schemas/weeklyReportResponse";
+
+interface AgendaItem {
+  title: string;
+  description: string;
+  presenter: string;
+  duration_minutes: number | null;
+}
+
+interface ParsedMemberTask {
+  status: string;
+  title: string;
+  details: string[];
+}
+
+interface ParsedCategory {
+  name: string;
+  tasks: ParsedMemberTask[];
+}
+
+interface ParsedMember {
+  name: string;
+  categories: ParsedCategory[];
+}
+
+interface ParsedWeeklyData {
+  team_members: ParsedMember[];
+}
+import {
+  useGetMeetingApiV1MeetingsMeetingIdGet,
+  useUpdateMeetingApiV1MeetingsMeetingIdPut,
+} from "@/lib/api/__generated__/meetings/meetings";
 import { useUploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost } from "@/lib/api/__generated__/recordings/recordings";
 import {
   useGetTeamApiV1TeamsTeamIdGet,
@@ -21,6 +60,13 @@ import {
 import { useStartTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost } from "@/lib/api/__generated__/transcription/transcription";
 import { useLoadWeeklyReportForMeetingApiV1WeeklyReportsMeetingsMeetingIdWeeklyReportPost } from "@/lib/api/__generated__/weekly-reports/weekly-reports";
 import { cn } from "@/lib/utils";
+
+const defaultAgendaItem: AgendaItem = {
+  title: "",
+  description: "",
+  presenter: "",
+  duration_minutes: null,
+};
 
 export default function MeetingSetupPage() {
   const params = useParams();
@@ -34,10 +80,19 @@ export default function MeetingSetupPage() {
   const [selectedMembers, setSelectedMembers] = useAtom(selectedMembersAtom);
   const [confluencePageId, setConfluencePageId] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [weeklyReportPreview, setWeeklyReportPreview] = useState<WeeklyReportResponse | null>(
+    null,
+  );
+
+  // Agenda items for general meetings (P2)
+  const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
 
   // Fetch meeting to detect type
   const { data: meetingData } = useGetMeetingApiV1MeetingsMeetingIdGet(meetingId);
   const isGeneralMeeting = meetingData?.meeting_type === "general";
+
+  // Update meeting mutation for agenda
+  const updateMeeting = useUpdateMeetingApiV1MeetingsMeetingIdPut();
 
   // Fetch teams list
   const { data: teams } = useListTeamsApiV1TeamsGet();
@@ -67,16 +122,19 @@ export default function MeetingSetupPage() {
   const loadWeeklyReport =
     useLoadWeeklyReportForMeetingApiV1WeeklyReportsMeetingsMeetingIdWeeklyReportPost({
       mutation: {
-        onSuccess: () => {
+        onSuccess: (data) => {
           setConfluence({
             ...confluence,
             weeklyReportLoaded: true,
             weeklyReportPageId: confluencePageId,
           });
-          toast.success("주간업무록을 불러왔습니다");
+          setWeeklyReportPreview(data as WeeklyReportResponse);
         },
-        onError: () => {
-          toast.error("주간업무록 로드에 실패했습니다");
+        onError: (error) => {
+          const detail =
+            (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+            "주간업무록 로드에 실패했습니다";
+          toast.error(detail);
         },
       },
     });
@@ -88,7 +146,7 @@ export default function MeetingSetupPage() {
         setRecording({ ...recording, uploadStatus: "uploaded", uploadProgress: 100 });
         toast.success("파일 업로드 완료");
         // Start transcription after upload
-        startTranscription.mutate({ meetingId });
+        startTranscription.mutate({ meetingId, data: null });
       },
       onError: (error) => {
         const errorDetail = (error as { detail?: string })?.detail || "업로드 실패";
@@ -131,15 +189,25 @@ export default function MeetingSetupPage() {
     setRecording({ ...recording, file: null, uploadStatus: "idle" });
   };
 
+  const extractConfluencePageId = (input: string): string => {
+    const trimmed = input.trim();
+    // Extract page ID from full Confluence URL (e.g., .../pages/1985282090/...)
+    const match = trimmed.match(/\/pages\/(\d+)/);
+    if (match) return match[1];
+    // Already a plain ID
+    return trimmed;
+  };
+
   const handleLoadWeeklyReport = () => {
     if (!confluencePageId.trim()) return;
+    const pageId = extractConfluencePageId(confluencePageId);
     loadWeeklyReport.mutate({
       meetingId,
-      data: { confluence_page_id: confluencePageId },
+      data: { confluence_page_id: pageId },
     });
   };
 
-  const handleStartProcessing = () => {
+  const handleStartProcessing = async () => {
     if (!recording.file) {
       toast.error("녹음 파일을 업로드해주세요");
       return;
@@ -147,6 +215,22 @@ export default function MeetingSetupPage() {
 
     setIsUploading(true);
     setRecording({ ...recording, uploadStatus: "uploading", uploadProgress: 0 });
+
+    // Save agenda items for general meetings (P2)
+    if (isGeneralMeeting && agendaItems.length > 0) {
+      const validAgendaItems = agendaItems.filter((item) => item.title.trim());
+      if (validAgendaItems.length > 0) {
+        try {
+          await updateMeeting.mutateAsync({
+            meetingId,
+            data: { agenda_items: validAgendaItems },
+          });
+        } catch (error) {
+          // Continue even if agenda save fails
+          console.error("Failed to save agenda items:", error);
+        }
+      }
+    }
 
     uploadRecording.mutate({
       meetingId,
@@ -175,7 +259,7 @@ export default function MeetingSetupPage() {
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="Confluence 페이지 ID 입력"
+                  placeholder="Confluence 페이지 URL 또는 ID 입력"
                   value={confluencePageId}
                   onChange={(e) => setConfluencePageId(e.target.value)}
                   className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -202,6 +286,100 @@ export default function MeetingSetupPage() {
               {confluence.weeklyReportLoaded && (
                 <p className="mt-2 text-xs text-green-600">주간업무록이 연결되었습니다</p>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Agenda Items - only for general meetings (P2) */}
+        {isGeneralMeeting && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ListTodo className="h-4 w-4" />
+                회의 안건 (선택)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {agendaItems.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  회의 안건을 추가하면 구조화된 회의록을 생성할 수 있습니다.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {agendaItems.map((item, index) => (
+                    <div key={index} className="rounded-lg border border-border p-3 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <input
+                          type="text"
+                          placeholder="안건 제목"
+                          value={item.title}
+                          onChange={(e) => {
+                            const newItems = [...agendaItems];
+                            newItems[index] = { ...item, title: e.target.value };
+                            setAgendaItems(newItems);
+                          }}
+                          className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setAgendaItems(agendaItems.filter((_, i) => i !== index));
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          placeholder="발표자 (선택)"
+                          value={item.presenter}
+                          onChange={(e) => {
+                            const newItems = [...agendaItems];
+                            newItems[index] = { ...item, presenter: e.target.value };
+                            setAgendaItems(newItems);
+                          }}
+                          className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                        <input
+                          type="number"
+                          placeholder="시간 (분)"
+                          value={item.duration_minutes ?? ""}
+                          onChange={(e) => {
+                            const newItems = [...agendaItems];
+                            newItems[index] = {
+                              ...item,
+                              duration_minutes: e.target.value ? Number(e.target.value) : null,
+                            };
+                            setAgendaItems(newItems);
+                          }}
+                          className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      </div>
+                      <textarea
+                        placeholder="상세 설명 (선택)"
+                        value={item.description}
+                        onChange={(e) => {
+                          const newItems = [...agendaItems];
+                          newItems[index] = { ...item, description: e.target.value };
+                          setAgendaItems(newItems);
+                        }}
+                        rows={2}
+                        className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAgendaItems([...agendaItems, { ...defaultAgendaItem }])}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                안건 추가
+              </Button>
             </CardContent>
           </Card>
         )}
@@ -264,6 +442,57 @@ export default function MeetingSetupPage() {
           </Button>
         </div>
       </div>
+
+      {/* Weekly Report Preview Modal */}
+      <Dialog
+        open={weeklyReportPreview !== null}
+        onOpenChange={(open) => {
+          if (!open) setWeeklyReportPreview(null);
+        }}
+      >
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>주간업무록 확인</DialogTitle>
+            <DialogDescription>Confluence에서 불러온 주간업무록입니다.</DialogDescription>
+          </DialogHeader>
+          {(weeklyReportPreview?.parsed_data as unknown as ParsedWeeklyData | undefined)?.team_members && (
+            <div className="space-y-4">
+              {(weeklyReportPreview!.parsed_data as unknown as ParsedWeeklyData).team_members.map(
+                (member) => (
+                  <div key={member.name} className="rounded-lg border p-3">
+                    <h4 className="mb-2 font-semibold">{member.name}</h4>
+                    {member.categories.map((cat) => (
+                      <div key={cat.name} className="mb-2 ml-2">
+                        <p className="text-sm font-medium text-muted-foreground">{cat.name}</p>
+                        <ul className="ml-4 list-disc text-sm">
+                          {cat.tasks.map((task, taskIdx) => (
+                            <li key={`${cat.name}-${taskIdx}`}>
+                              <span
+                                className={cn(
+                                  "mr-1 rounded px-1 py-0.5 text-xs font-medium",
+                                  task.status === "완료" && "bg-green-100 text-green-700",
+                                  task.status === "진행" && "bg-blue-100 text-blue-700",
+                                  task.status === "예정" && "bg-gray-100 text-gray-600",
+                                )}
+                              >
+                                {task.status}
+                              </span>
+                              {task.title}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                ),
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setWeeklyReportPreview(null)}>확인</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

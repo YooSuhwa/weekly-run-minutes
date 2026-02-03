@@ -58,7 +58,7 @@ GENERAL_SYSTEM_PROMPT = """당신은 회의록을 작성하는 전문 비서입�
 8. 불필요한 인사말이나 잡담은 제외합니다.
 
 회의록 구조:
-# [날짜] [회의 제목] 회의록
+# [회의 제목] 회의록
 
 ## 참석자
 - 참석자 목록
@@ -207,7 +207,7 @@ class GeneralMeetingService:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.3,
-                max_tokens=4096,
+                max_completion_tokens=4096,
             )
 
             raw_content = response.choices[0].message.content or ""

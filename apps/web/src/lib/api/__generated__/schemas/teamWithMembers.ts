@@ -15,8 +15,12 @@ export interface TeamWithMembers {
   updated_at: string;
   id: string;
   name: string;
+  has_password?: boolean;
   confluence_base_url?: string | null;
   confluence_space_key?: string | null;
-  has_password?: boolean;
+  confluence_username?: string | null;
+  has_confluence_token?: boolean;
+  filtering_enabled?: boolean;
+  filtering_confidence_threshold?: number;
   members: TeamMemberResponse[];
 }

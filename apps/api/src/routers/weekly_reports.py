@@ -113,6 +113,13 @@ async def load_weekly_report_for_meeting(
     # Parse the HTML content
     parser = WeeklyReportParser()
     parsed_data = parser.parse(page_data["html_content"])
+    logger.info(
+        "Weekly report parsed",
+        members_count=len(parsed_data.get("team_members", [])),
+        html_length=len(page_data["html_content"]),
+        has_expand_macro="ac:structured-macro" in page_data["html_content"],
+        parser_module=WeeklyReportParser.__module__,
+    )
 
     # Create weekly report record
     weekly_report = WeeklyReport(

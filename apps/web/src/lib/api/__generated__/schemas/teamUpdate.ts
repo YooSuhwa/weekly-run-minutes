@@ -14,4 +14,8 @@ export interface TeamUpdate {
   password?: string | null;
   confluence_base_url?: string | null;
   confluence_space_key?: string | null;
+  confluence_username?: string | null;
+  confluence_token?: string | null;
+  filtering_enabled?: boolean | null;
+  filtering_confidence_threshold?: number | null;
 }

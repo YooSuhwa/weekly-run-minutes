@@ -76,8 +76,7 @@ async def list_vocabulary(
     if search:
         search_pattern = f"%{search}%"
         query = query.where(
-            (Vocabulary.term.ilike(search_pattern))
-            | (Vocabulary.correction.ilike(search_pattern))
+            (Vocabulary.term.ilike(search_pattern)) | (Vocabulary.correction.ilike(search_pattern))
         )
 
     query = query.order_by(Vocabulary.term)
@@ -182,9 +181,7 @@ async def bulk_import_vocabulary(
     skipped_count = 0
 
     # Get existing terms for this team
-    existing_result = await db.execute(
-        select(Vocabulary.term).where(Vocabulary.team_id == team_id)
-    )
+    existing_result = await db.execute(select(Vocabulary.term).where(Vocabulary.team_id == team_id))
     existing_terms = {row[0].lower() for row in existing_result.all()}
 
     for item in data.items:

@@ -38,9 +38,7 @@ class Recording(BaseModel):
     file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
     duration_seconds: Mapped[float | None] = mapped_column(nullable=True)
-    source: Mapped[str] = mapped_column(
-        String(20), default=RecordingSource.UPLOAD, nullable=False
-    )
+    source: Mapped[str] = mapped_column(String(20), default=RecordingSource.UPLOAD, nullable=False)
 
     # Relationships
     meeting: Mapped["Meeting"] = relationship("Meeting", back_populates="recording")

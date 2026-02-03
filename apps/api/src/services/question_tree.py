@@ -86,9 +86,7 @@ class QuestionTree:
                     for i in c.get("items", [])
                 ]
                 categories.append(QuestionCategory(name=c["name"], items=items))
-            speakers.append(
-                SpeakerQuestions(speaker_name=s["speaker_name"], categories=categories)
-            )
+            speakers.append(SpeakerQuestions(speaker_name=s["speaker_name"], categories=categories))
         return cls(speakers=speakers)
 
 
@@ -134,10 +132,7 @@ class QuestionTreeService:
             "Question tree generated",
             speakers=len(tree.speakers),
             total_items=sum(
-                len(item)
-                for s in tree.speakers
-                for c in s.categories
-                for item in [c.items]
+                len(item) for s in tree.speakers for c in s.categories for item in [c.items]
             ),
         )
         return tree
@@ -149,9 +144,9 @@ class QuestionTreeService:
         for category in member.categories:
             items = []
             for task in category.tasks:
-                question = STATUS_QUESTIONS.get(
-                    task.status, "{title}에 대해 말씀해주세요."
-                ).format(title=task.title)
+                question = STATUS_QUESTIONS.get(task.status, "{title}에 대해 말씀해주세요.").format(
+                    title=task.title
+                )
 
                 hints = task.details[:3] if task.details else []
 

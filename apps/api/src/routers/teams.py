@@ -53,10 +53,20 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 @router.get("", response_model=list[TeamResponse])
 async def list_teams(
     db: DB,
-) -> list[Team]:
+) -> list[TeamResponse]:
     """List all teams (names only, no passwords or sensitive data)."""
     result = await db.execute(select(Team))
-    return list(result.scalars().all())
+    teams = result.scalars().all()
+    return [
+        TeamResponse(
+            id=team.id,
+            name=team.name,
+            has_password=team.password_hash is not None,
+            created_at=team.created_at,
+            updated_at=team.updated_at,
+        )
+        for team in teams
+    ]
 
 
 @router.post("", response_model=TeamWithMembers, status_code=status.HTTP_201_CREATED)
@@ -70,6 +80,10 @@ async def create_team(
         password_hash=hash_password(data.password) if data.password else None,
         confluence_base_url=data.confluence_base_url,
         confluence_space_key=data.confluence_space_key,
+        confluence_username=data.confluence_username,
+        confluence_token=data.confluence_token,
+        filtering_enabled=data.filtering_enabled,
+        filtering_confidence_threshold=data.filtering_confidence_threshold,
     )
     db.add(team)
     await db.flush()
@@ -91,7 +105,11 @@ async def create_team(
         name=team.name,
         confluence_base_url=team.confluence_base_url,
         confluence_space_key=team.confluence_space_key,
+        confluence_username=team.confluence_username,
+        has_confluence_token=team.confluence_token is not None,
         has_password=team.password_hash is not None,
+        filtering_enabled=team.filtering_enabled,
+        filtering_confidence_threshold=team.filtering_confidence_threshold,
         created_at=team.created_at,
         updated_at=team.updated_at,
         members=[
@@ -130,7 +148,11 @@ async def get_team(
         name=team.name,
         confluence_base_url=team.confluence_base_url,
         confluence_space_key=team.confluence_space_key,
+        confluence_username=team.confluence_username,
+        has_confluence_token=team.confluence_token is not None,
         has_password=team.password_hash is not None,
+        filtering_enabled=team.filtering_enabled,
+        filtering_confidence_threshold=team.filtering_confidence_threshold,
         created_at=team.created_at,
         updated_at=team.updated_at,
         members=[
@@ -189,7 +211,11 @@ async def update_team(
         name=updated_team.name,
         confluence_base_url=updated_team.confluence_base_url,
         confluence_space_key=updated_team.confluence_space_key,
+        confluence_username=updated_team.confluence_username,
+        has_confluence_token=updated_team.confluence_token is not None,
         has_password=updated_team.password_hash is not None,
+        filtering_enabled=updated_team.filtering_enabled,
+        filtering_confidence_threshold=updated_team.filtering_confidence_threshold,
         created_at=updated_team.created_at,
         updated_at=updated_team.updated_at,
         members=[
