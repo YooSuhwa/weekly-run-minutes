@@ -142,26 +142,38 @@ class WeeklyReportParser:
     def _parse_expand_macros(self, html_content: str) -> ParsedWeeklyReport:
         """Parse Confluence expand macro format.
 
-        Structure:
+        Supports two formats:
+
+        Format 1 (Legacy - member name in expand title):
         <ac:structured-macro ac:name="expand">
           <ac:parameter ac:name="title">팀원명</ac:parameter>
-          <ac:rich-text-body>
-            <ul>
-              <li><p><strong>대분류</strong></p>
-                <ul>
-                  <li><p>[상태] 업무내용</p>
-                    <ul><li><p>상세내용</p></li></ul>
-                  </li>
-                </ul>
-              </li>
-            </ul>
-          </ac:rich-text-body>
+          <ac:rich-text-body>...</ac:rich-text-body>
+        </ac:structured-macro>
+
+        Format 2 (New - member name in task-list, expand title is "자세히 보기"):
+        <ac:task-list>
+          <ac:task>
+            <ac:task-body><strong>팀원명</strong></ac:task-body>
+          </ac:task>
+        </ac:task-list>
+        <ac:structured-macro ac:name="expand">
+          <ac:parameter ac:name="title">자세히 보기</ac:parameter>
+          <ac:rich-text-body>...</ac:rich-text-body>
         </ac:structured-macro>
         """
         result = ParsedWeeklyReport()
 
-        # Extract expand macro sections using regex (more reliable than XML parsing
-        # since Confluence storage format mixes namespaces)
+        # Try new format first (task-list + expand with "자세히 보기")
+        new_format_members = self._parse_task_list_expand_format(html_content)
+        if new_format_members:
+            logger.info(
+                "Detected new format (task-list + expand)",
+                members=len(new_format_members),
+            )
+            result.team_members = new_format_members
+            return result
+
+        # Fall back to legacy format (member name in expand title)
         expand_pattern = re.compile(
             r'<ac:structured-macro[^>]*ac:name="expand"[^>]*>'
             r'.*?<ac:parameter ac:name="title">(.*?)</ac:parameter>'
@@ -192,6 +204,73 @@ class WeeklyReportParser:
 
         return result
 
+    def _parse_task_list_expand_format(self, html_content: str) -> list[MemberTasks]:
+        """Parse new format where member names are in task-list elements.
+
+        Pattern: <ac:task-list>...<ac:task-body><strong>NAME</strong>...</ac:task-body>...</ac:task-list>
+        followed by <ac:structured-macro ac:name="expand">...<ac:parameter ac:name="title">자세히 보기</ac:parameter>...
+        """
+        members: list[MemberTasks] = []
+
+        # Find all task-list + expand pairs
+        # Pattern: task with member name, followed by expand with "자세히 보기"
+        task_pattern = re.compile(
+            r"<ac:task-list[^>]*>.*?<ac:task>.*?"
+            r"<ac:task-body>.*?<strong>(.*?)</strong>.*?</ac:task-body>"
+            r".*?</ac:task>.*?</ac:task-list>",
+            re.DOTALL,
+        )
+
+        expand_pattern = re.compile(
+            r'<ac:structured-macro[^>]*ac:name="expand"[^>]*>'
+            r'.*?<ac:parameter ac:name="title">(.*?)</ac:parameter>'
+            r".*?<ac:rich-text-body>(.*?)</ac:rich-text-body>"
+            r".*?</ac:structured-macro>",
+            re.DOTALL,
+        )
+
+        # Find all task names and their positions
+        task_matches = list(task_pattern.finditer(html_content))
+        expand_matches = list(expand_pattern.finditer(html_content))
+
+        if not task_matches:
+            return []
+
+        # Check if this looks like the new format (expands have "자세히 보기" title)
+        detail_expands = [
+            m for m in expand_matches if m.group(1).strip() == "자세히 보기"
+        ]
+        if not detail_expands:
+            return []
+
+        # Match each task with its following expand
+        seen_members: set[str] = set()
+        for task_match in task_matches:
+            member_name = task_match.group(1).strip()
+            task_end_pos = task_match.end()
+
+            # Skip if name is too long (likely not a person's name)
+            if len(member_name) > 10:
+                continue
+
+            # Find the next expand macro after this task
+            # Use >= because the expand may start exactly where the task ends
+            for expand_match in detail_expands:
+                if expand_match.start() >= task_end_pos:
+                    body_html = expand_match.group(2).strip()
+
+                    # Skip if we already processed this member
+                    if member_name in seen_members:
+                        members = [m for m in members if m.name != member_name]
+
+                    seen_members.add(member_name)
+                    member = self._parse_member_body(member_name, body_html)
+                    if member.categories:
+                        members.append(member)
+                    break
+
+        return members
+
     def _parse_member_body(self, name: str, body_html: str) -> MemberTasks:
         """Parse a member's body HTML to extract categories and tasks.
 
@@ -214,16 +293,25 @@ class WeeklyReportParser:
             logger.debug("XML parse failed for member %s, using regex fallback", name)
             return self._parse_member_body_regex(name, body_html)
 
-        # Find the top-level <ul>
-        top_ul = root.find(".//ul")
-        if top_ul is None:
+        # Find ALL top-level <ul> elements (some members have multiple <ul> blocks)
+        # Use ./ul for direct children, not .//ul which finds nested ones too
+        top_uls = root.findall("./ul")
+        if not top_uls:
+            # Fallback: try to find any ul
+            top_uls = root.findall(".//ul")
+            # Filter to only include top-level uls (not nested inside another ul)
+            if top_uls:
+                top_uls = [ul for ul in top_uls if root.find(f".//ul//{ul.tag}") != ul]
+
+        if not top_uls:
             return member
 
-        # Each top-level <li> is a category
-        for cat_li in top_ul.findall("./li"):
-            category = self._parse_category_li(cat_li)
-            if category and (category.tasks or category.name):
-                member.categories.append(category)
+        # Each top-level <li> in each <ul> is a category
+        for top_ul in top_uls:
+            for cat_li in top_ul.findall("./li"):
+                category = self._parse_category_li(cat_li)
+                if category and (category.tasks or category.name):
+                    member.categories.append(category)
 
         return member
 
@@ -303,6 +391,32 @@ class WeeklyReportParser:
 
         # Self-close void elements that might not be self-closed
         html = re.sub(r"<(br|hr|img)([^>]*?)(?<!/)>", r"<\1\2 />", html)
+
+        # Convert HTML entities to Unicode (XML only supports &amp; &lt; &gt; &apos; &quot;)
+        # Common HTML entities found in Confluence
+        html_entities = {
+            "&middot;": "·",
+            "&nbsp;": " ",
+            "&ndash;": "–",
+            "&mdash;": "—",
+            "&lsquo;": "'",
+            "&rsquo;": "'",
+            "&ldquo;": """,
+            "&rdquo;": """,
+            "&bull;": "•",
+            "&hellip;": "…",
+            "&copy;": "©",
+            "&reg;": "®",
+            "&trade;": "™",
+            "&zwnj;": "\u200c",  # Zero-width non-joiner
+            "&zwj;": "\u200d",  # Zero-width joiner
+        }
+        for entity, char in html_entities.items():
+            html = html.replace(entity, char)
+
+        # Handle numeric entities like &#8226; or &#x2022;
+        html = re.sub(r"&#(\d+);", lambda m: chr(int(m.group(1))), html)
+        html = re.sub(r"&#x([0-9a-fA-F]+);", lambda m: chr(int(m.group(1), 16)), html)
 
         return html
 
