@@ -233,9 +233,11 @@ class ChatFilterService:
                 )
 
         except (json.JSONDecodeError, TypeError, ValueError) as e:
-            logger.warning(
+            logger.error(
                 "Failed to parse filter response, treating all as work-related",
                 error=str(e),
+                raw_content=raw_content[:500],
+                segments_count=len(original_segments),
             )
             # Fallback: treat all as work-related
             for segment in original_segments:

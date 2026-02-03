@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileUpload } from "@/components/ui/file-upload";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { useToast } from "@/components/ui/toast";
+import { useGetMeetingApiV1MeetingsMeetingIdGet } from "@/lib/api/__generated__/meetings/meetings";
 import { useUploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost } from "@/lib/api/__generated__/recordings/recordings";
 import {
   useGetTeamApiV1TeamsTeamIdGet,
@@ -33,6 +34,10 @@ export default function MeetingSetupPage() {
   const [selectedMembers, setSelectedMembers] = useAtom(selectedMembersAtom);
   const [confluencePageId, setConfluencePageId] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+
+  // Fetch meeting to detect type
+  const { data: meetingData } = useGetMeetingApiV1MeetingsMeetingIdGet(meetingId);
+  const isGeneralMeeting = meetingData?.meeting_type === "general";
 
   // Fetch teams list
   const { data: teams } = useListTeamsApiV1TeamsGet();
@@ -157,47 +162,49 @@ export default function MeetingSetupPage() {
       </div>
 
       <div className="space-y-6">
-        {/* Confluence Weekly Report */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <LinkIcon className="h-4 w-4" />
-              주간업무록 (선택)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Confluence 페이지 ID 입력"
-                value={confluencePageId}
-                onChange={(e) => setConfluencePageId(e.target.value)}
-                className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                disabled={confluence.weeklyReportLoaded}
-              />
-              <Button
-                variant="outline"
-                onClick={handleLoadWeeklyReport}
-                disabled={
-                  !confluencePageId.trim() ||
-                  confluence.weeklyReportLoaded ||
-                  loadWeeklyReport.isPending
-                }
-              >
-                {confluence.weeklyReportLoaded ? (
-                  <Check className="h-4 w-4" />
-                ) : loadWeeklyReport.isPending ? (
-                  "로딩..."
-                ) : (
-                  "불러오기"
-                )}
-              </Button>
-            </div>
-            {confluence.weeklyReportLoaded && (
-              <p className="mt-2 text-xs text-green-600">주간업무록이 연결되었습니다</p>
-            )}
-          </CardContent>
-        </Card>
+        {/* Confluence Weekly Report - only for weekly_report type */}
+        {!isGeneralMeeting && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <LinkIcon className="h-4 w-4" />
+                주간업무록 (선택)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Confluence 페이지 ID 입력"
+                  value={confluencePageId}
+                  onChange={(e) => setConfluencePageId(e.target.value)}
+                  className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  disabled={confluence.weeklyReportLoaded}
+                />
+                <Button
+                  variant="outline"
+                  onClick={handleLoadWeeklyReport}
+                  disabled={
+                    !confluencePageId.trim() ||
+                    confluence.weeklyReportLoaded ||
+                    loadWeeklyReport.isPending
+                  }
+                >
+                  {confluence.weeklyReportLoaded ? (
+                    <Check className="h-4 w-4" />
+                  ) : loadWeeklyReport.isPending ? (
+                    "로딩..."
+                  ) : (
+                    "불러오기"
+                  )}
+                </Button>
+              </div>
+              {confluence.weeklyReportLoaded && (
+                <p className="mt-2 text-xs text-green-600">주간업무록이 연결되었습니다</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Attendees */}
         <Card>

@@ -134,6 +134,7 @@ class GeneralMeetingService:
         team_name: str,
         attendees: list[str],
         agenda_items: list[AgendaItemData] | None = None,
+        vocabulary_prompt: str | None = None,
     ) -> GeneralMinutesResult:
         """Generate meeting minutes from transcript for general meetings.
 
@@ -144,6 +145,7 @@ class GeneralMeetingService:
             team_name: Team name
             attendees: List of attendee names
             agenda_items: Optional list of agenda items
+            vocabulary_prompt: Formatted vocabulary terms for AI correction
 
         Returns:
             GeneralMinutesResult with generated markdown and extracted metadata
@@ -154,6 +156,7 @@ class GeneralMeetingService:
             date=meeting_date,
             team=team_name,
             has_agenda=agenda_items is not None and len(agenda_items) > 0,
+            has_vocabulary=vocabulary_prompt is not None,
         )
 
         # Build agenda section if provided
@@ -170,6 +173,11 @@ class GeneralMeetingService:
                     agenda_lines.append(f"- 예상 시간: {item.duration_minutes}분")
             agenda_section = "\n".join(agenda_lines)
 
+        # Build vocabulary section if provided
+        vocabulary_section = ""
+        if vocabulary_prompt:
+            vocabulary_section = f"\n{vocabulary_prompt}\n"
+
         # Build user prompt
         user_prompt = f"""다음 정보를 기반으로 회의록을 작성해주세요.
 
@@ -178,7 +186,7 @@ class GeneralMeetingService:
 - 회의 제목: {meeting_title}
 - 팀: {team_name}
 - 참석자: {", ".join(attendees)}
-
+{vocabulary_section}
 {agenda_section}
 
 ## 회의 녹취록

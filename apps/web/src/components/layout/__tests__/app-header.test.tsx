@@ -202,7 +202,7 @@ describe("AppHeader", () => {
       const { container } = render(<AppHeader />);
       const nav = container.querySelector("nav");
       const links = nav?.querySelectorAll("a");
-      expect(links?.length).toBe(2); // 대시보드, 팀원 관리
+      expect(links?.length).toBe(3); // 대시보드, 팀원 관리, 설정
     });
 
     it("navigation links have text content", () => {

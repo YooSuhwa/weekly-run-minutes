@@ -62,23 +62,27 @@ vi.mock("@/components/ui/toast", () => ({
   }),
 }));
 
-// Mock child components to isolate page logic
-vi.mock("../minutes-editor", () => ({
-  MinutesEditor: ({
-    content,
-    onChange,
-  }: {
-    content: string;
-    onChange: (content: string) => void;
-  }) => (
+// Hoisted mock for MinutesEditor so next/dynamic can reference it
+const MockMinutesEditor = vi.hoisted(() =>
+  vi.fn(({ content, onChange }: { content: string; onChange: (content: string) => void }) => (
     <div data-testid="minutes-editor">
       <textarea
         data-testid="editor-textarea"
         value={content}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => onChange(e.target.value)}
       />
     </div>
-  ),
+  )),
+);
+
+// Mock next/dynamic to render the MinutesEditor mock directly
+vi.mock("next/dynamic", () => ({
+  default: () => MockMinutesEditor,
+}));
+
+// Mock child components to isolate page logic
+vi.mock("../minutes-editor", () => ({
+  MinutesEditor: MockMinutesEditor,
 }));
 
 vi.mock("../correction-panel", () => ({
@@ -101,6 +105,14 @@ vi.mock("../correction-panel", () => ({
           {correction.original} → {correction.corrected}
         </button>
       ))}
+    </div>
+  ),
+}));
+
+vi.mock("@/components/meeting/trash-panel", () => ({
+  TrashPanel: ({ meetingId }: { meetingId: string }) => (
+    <div data-testid="trash-panel" data-meeting-id={meetingId}>
+      Trash Panel
     </div>
   ),
 }));

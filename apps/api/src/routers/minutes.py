@@ -17,6 +17,7 @@ from src.models.team import Team
 from src.services.confluence import ConfluenceError, ConfluenceService
 from src.services.general_meeting import AgendaItemData, GeneralMeetingService
 from src.services.minutes_generator import MinutesGenerationError, MinutesGeneratorService
+from src.services.vocabulary import VocabularyService
 from src.services.weekly_report_parser import WeeklyReportParser
 
 logger = get_logger(__name__)
@@ -128,6 +129,15 @@ async def generate_minutes_task(meeting_id: UUID) -> None:
             # Get attendees
             attendees = [m.name for m in meeting.team.members if m.is_active]
 
+            # Load team vocabulary for AI prompt context
+            vocab_service = VocabularyService()
+            vocabulary = await vocab_service.get_team_vocabulary(db, meeting.team.id)
+            vocabulary_prompt = (
+                vocab_service.format_vocabulary_for_prompt(vocabulary)
+                if vocabulary
+                else None
+            )
+
             # Determine meeting type and generate accordingly
             meeting_type_val = (
                 meeting.meeting_type.value
@@ -159,6 +169,7 @@ async def generate_minutes_task(meeting_id: UUID) -> None:
                     team_name=meeting.team.name,
                     attendees=attendees,
                     agenda_items=agenda_items,
+                    vocabulary_prompt=vocabulary_prompt,
                 )
 
                 # Store minutes with corrections and metadata
@@ -204,6 +215,7 @@ async def generate_minutes_task(meeting_id: UUID) -> None:
                     meeting_date=meeting.meeting_date.isoformat(),
                     team_name=meeting.team.name,
                     attendees=attendees,
+                    vocabulary_prompt=vocabulary_prompt,
                 )
 
                 # Store minutes with corrections (including position data)

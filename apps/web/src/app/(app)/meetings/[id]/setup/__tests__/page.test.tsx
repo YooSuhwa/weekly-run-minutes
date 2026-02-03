@@ -47,6 +47,11 @@ vi.mock("@/components/ui/toast", () => ({
   }),
 }));
 
+// Mock meetings API
+vi.mock("@/lib/api/__generated__/meetings/meetings", () => ({
+  useGetMeetingApiV1MeetingsMeetingIdGet: () => ({ data: { meeting_type: "weekly_report" } }),
+}));
+
 // Mock teams API
 vi.mock("@/lib/api/__generated__/teams/teams", () => ({
   useListTeamsApiV1TeamsGet: () => ({ data: mockTeamsList }),

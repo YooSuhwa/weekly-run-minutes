@@ -1,6 +1,7 @@
 import { atom } from "jotai";
 
 export type MeetingMode = "upload" | "realtime";
+export type MeetingType = "weekly_report" | "general";
 
 export type MeetingStatus =
   | "created"
@@ -23,6 +24,7 @@ export interface Meeting {
   title: string;
   status: MeetingStatus;
   meetingMode: MeetingMode;
+  meetingType: MeetingType;
   errorMessage: string | null;
   confluencePageId: string | null;
   confluencePageUrl: string | null;
@@ -30,4 +32,5 @@ export interface Meeting {
 
 export const currentMeetingAtom = atom<Meeting | null>(null);
 export const meetingsListAtom = atom<Meeting[]>([]);
-export const meetingModeAtom = atom<"upload" | "realtime">("upload");
+export const meetingModeAtom = atom<MeetingMode>("upload");
+export const meetingTypeAtom = atom<MeetingType>("weekly_report");
