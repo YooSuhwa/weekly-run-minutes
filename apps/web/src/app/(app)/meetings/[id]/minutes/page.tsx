@@ -25,8 +25,11 @@ const MinutesEditor = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="rounded-xl border border-border bg-card min-h-[500px] flex items-center justify-center">
-        <p className="text-sm text-muted-foreground">에디터 로딩 중...</p>
+      <div className="rounded-xl border border-border bg-card min-h-[500px] flex flex-col items-center justify-center gap-4">
+        <div className="animate-pulse">
+          <div className="h-20 w-20 rounded-full bg-primary/10" />
+        </div>
+        <p className="text-sm text-muted-foreground">에디터를 준비하고 있어요...</p>
       </div>
     ),
   },

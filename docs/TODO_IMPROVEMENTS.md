@@ -137,6 +137,23 @@
   - Blueprint: 테이블 (Task, Assignee, Due Date)
   - Blueprint 페이지 12, 13 참조
 
+- [ ] **신뢰도 히트맵 (STT Confidence Heatmap)**
+  - STT 변환 결과의 신뢰도를 시각적으로 표시
+  - 텍스트 배경색 그라데이션: 높음(투명) → 낮음(빨간색)
+  - 호버 시 툴팁으로 정확한 신뢰도 표시
+  - 낮은 신뢰도 영역 클릭 시 해당 부분으로 스크롤
+  - 히트맵 표시/숨김 토글 버튼
+  - 관련 파일: `minutes-editor.tsx`, `stt_service.py`
+
+- [ ] **클릭 투 플레이 (Click-to-Play Audio)**
+  - 회의록의 특정 텍스트 클릭 시 해당 부분 원본 오디오 재생
+  - Word-level timestamps 매핑
+  - 미니 오디오 플레이어 컴포넌트
+  - 재생 속도 조절 (0.5x, 1x, 1.5x, 2x)
+  - 재생 중인 구간 하이라이트
+  - 키보드 단축키 지원 (Space: 재생/일시정지)
+  - 관련 파일: `minutes-editor.tsx`, `audio-player.tsx` (신규)
+
 ---
 
 ## P1-full: 실시간 회의 오케스트레이션 (~95% 완료)
@@ -215,3 +232,103 @@
 - [x] **4번**: Confluence 게시 후 UI 상태 동기화 (meeting 데이터 refetch)
 - [x] **6번**: 게시 완료 건 수정 불가 (에디터 읽기 전용, 저장 버튼 비활성화)
 - [x] 읽기 전용 모드에서 내용 표시 안되는 버그 수정
+
+---
+
+## P3: 신뢰도 히트맵 & 클릭 투 플레이 상세 가이드
+
+> UI/UX 전략 문서(WeeklyRun_UX_Strategy.pdf) 기반 P3 단계 구현 가이드
+
+### 1. 신뢰도 히트맵 (STT Confidence Heatmap)
+
+#### 개요
+STT 변환 결과의 신뢰도를 시각적으로 표시하여 사용자가 교정이 필요한 부분을 쉽게 식별할 수 있도록 합니다.
+
+#### 시각적 표현 (OKLCH 컬러 시스템)
+```css
+/* 신뢰도별 배경색 */
+--confidence-high: transparent;                    /* 90%+ */
+--confidence-medium: oklch(0.95 0.1 90);          /* 70-90% - 연한 노란색 */
+--confidence-low: oklch(0.9 0.15 60);             /* 50-70% - 연한 주황색 */
+--confidence-very-low: oklch(0.9 0.15 30);        /* <50% - 연한 빨간색 */
+```
+
+#### 백엔드 요구사항
+- ElevenLabs API 응답에서 word-level confidence score 추출
+- STT 결과에 단어별 `confidence` 필드 포함
+- Minutes 저장 시 confidence 메타데이터 함께 저장
+
+#### 프론트엔드 구현
+```typescript
+// components/confidence-heatmap.tsx
+interface ConfidenceWord {
+  text: string;
+  confidence: number;  // 0-1
+  startOffset: number;
+  endOffset: number;
+}
+
+function getConfidenceColor(confidence: number): string {
+  if (confidence >= 0.9) return 'transparent';
+  if (confidence >= 0.7) return 'oklch(0.95 0.1 90 / 0.5)';
+  if (confidence >= 0.5) return 'oklch(0.9 0.15 60 / 0.5)';
+  return 'oklch(0.9 0.15 30 / 0.5)';
+}
+```
+
+### 2. 클릭 투 플레이 (Click-to-Play Audio)
+
+#### 개요
+회의록의 특정 텍스트를 클릭하면 해당 부분의 원본 오디오를 재생할 수 있는 기능입니다.
+
+#### 타임스탬프 매핑
+```typescript
+interface TimestampedWord {
+  text: string;
+  startTime: number;  // 초 단위
+  endTime: number;
+}
+
+// 클릭한 텍스트의 시작/종료 시간 찾기
+function findTimestampForText(
+  clickOffset: number,
+  words: TimestampedWord[]
+): { start: number; end: number } | null {
+  // ...
+}
+```
+
+#### 미니 오디오 플레이어 컴포넌트
+```typescript
+// components/ui/audio-player.tsx
+interface AudioPlayerProps {
+  src: string;
+  startTime?: number;
+  endTime?: number;
+  onTimeUpdate?: (currentTime: number) => void;
+}
+
+// 기능:
+// - 구간 재생 (startTime ~ endTime)
+// - 재생 속도 조절 (0.5x, 1x, 1.5x, 2x)
+// - 키보드 단축키 (Space: 재생/일시정지)
+```
+
+#### 백엔드 요구사항
+- 오디오 파일 스트리밍 API (HTTP Range 요청 지원)
+- GET /api/v1/recordings/{id}/stream
+- 타임스탬프 메타데이터 조회 API
+- GET /api/v1/recordings/{id}/timestamps
+
+### 3. 구현 우선순위
+
+| 기능 | 복잡도 | 의존성 | 우선순위 |
+|------|--------|--------|----------|
+| 신뢰도 히트맵 | 중간 | STT API confidence 필드 | P3-1 |
+| 클릭 투 플레이 | 높음 | 스트리밍 STT, 타임스탬프 | P3-2 |
+
+### 4. 참고 리소스
+
+- UI/UX 전략 문서: `docs/WeeklyRun_UX_Strategy.pdf`
+- 디자인 토큰: `packages/design-tokens/src/tokens.ts`
+- ElevenLabs API: word-level timestamps (`include_timestamps=true`)

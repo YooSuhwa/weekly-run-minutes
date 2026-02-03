@@ -9,6 +9,7 @@ import { meetingModeAtom, meetingTypeAtom } from "@/atoms/meeting";
 import { selectedTeamIdAtom } from "@/atoms/team";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Weeky } from "@/components/weeky/weeky";
 import { useCreateMeetingApiV1MeetingsPost } from "@/lib/api/__generated__/meetings/meetings";
 import { cn } from "@/lib/utils";
 
@@ -62,9 +63,8 @@ export default function NewMeetingPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">새 회의 시작</h1>
-        <p className="text-sm text-muted-foreground">회의 방식을 선택하세요</p>
+      <div className="mb-8 flex items-center gap-4">
+        <Weeky expression="questioning" size="md" message="어떤 방식으로 회의록을 만들까요?" />
       </div>
 
       {!hasTeam && (
@@ -118,8 +118,10 @@ export default function NewMeetingPage() {
         <div className="grid gap-4 sm:grid-cols-2">
           <Card
             className={cn(
-              "cursor-pointer transition-all",
-              selectedMode === "upload" && "ring-2 ring-primary",
+              "cursor-pointer transition-all hover:shadow-md",
+              selectedMode === "upload"
+                ? "ring-2 ring-primary bg-gradient-to-br from-[oklch(0.97_0.03_175)] to-[oklch(0.95_0.05_200)]"
+                : "hover:border-primary/50",
             )}
             onClick={() => setSelectedMode("upload")}
           >
@@ -139,8 +141,10 @@ export default function NewMeetingPage() {
 
           <Card
             className={cn(
-              "cursor-pointer transition-all",
-              selectedMode === "realtime" && "ring-2 ring-primary",
+              "cursor-pointer transition-all hover:shadow-md",
+              selectedMode === "realtime"
+                ? "ring-2 ring-primary bg-gradient-to-br from-[oklch(0.97_0.03_175)] to-[oklch(0.95_0.05_200)]"
+                : "hover:border-primary/50",
             )}
             onClick={() => setSelectedMode("realtime")}
           >

@@ -19,6 +19,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useAtom, useAtomValue } from "jotai";
 import { GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Weeky } from "@/components/weeky/weeky";
 import { useEffect, useState } from "react";
 import { selectedTeamIdAtom, type TeamMember, teamMembersAtom } from "@/atoms/team";
 import { Button } from "@/components/ui/button";
@@ -320,7 +321,9 @@ export default function TeamPage() {
   if (!teamId) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
-        <div className="text-center text-muted-foreground">팀을 선택해주세요.</div>
+        <div className="flex flex-col items-center justify-center py-16">
+          <Weeky expression="questioning" size="lg" message="팀원을 관리하려면 팀을 먼저 선택해주세요" />
+        </div>
       </div>
     );
   }

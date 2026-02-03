@@ -15,6 +15,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { Weeky } from "@/components/weeky/weeky";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { selectedTeamIdAtom } from "@/atoms/team";
@@ -365,7 +366,9 @@ export default function SettingsPage() {
   if (!teamId) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-8">
-        <div className="text-center text-muted-foreground">팀을 선택해주세요.</div>
+        <div className="flex flex-col items-center justify-center py-16">
+          <Weeky expression="questioning" size="lg" message="설정을 관리하려면 팀을 먼저 선택해주세요" />
+        </div>
       </div>
     );
   }

@@ -24,8 +24,8 @@ export default function DashboardPage() {
   if (isLoading) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-8">
-        <div className="flex items-center justify-center py-16">
-          <p className="text-muted-foreground">로딩 중...</p>
+        <div className="flex flex-col items-center justify-center py-16">
+          <Weeky expression="thinking" size="lg" message="회의 목록을 불러오고 있어요..." />
         </div>
       </div>
     );
@@ -34,8 +34,8 @@ export default function DashboardPage() {
   if (error) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-8">
-        <div className="flex items-center justify-center py-16">
-          <p className="text-destructive">회의 목록을 불러오는데 실패했습니다</p>
+        <div className="flex flex-col items-center justify-center py-16">
+          <Weeky expression="sorry" size="lg" message="회의 목록을 불러오는데 실패했어요" />
         </div>
       </div>
     );
@@ -43,21 +43,21 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
-      <div className="mb-8 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Weeky expression="greeting" size="md" />
-          <div>
-            <h1 className="text-2xl font-bold">대시보드</h1>
-            <p className="text-sm text-muted-foreground">
-              안녕하세요! 이번 주 잘 지내고 있나요?
-            </p>
-          </div>
+      {/* Welcome Card with Gradient */}
+      <div className="mb-8 rounded-2xl bg-gradient-to-br from-[oklch(0.95_0.05_175)] to-[oklch(0.92_0.08_220)] p-6 border border-primary/20 shadow-sm">
+        <div className="flex items-center justify-between">
+          <Weeky
+            expression="greeting"
+            variant="bubble"
+            size="md"
+            message="안녕하세요! 이번 주도 화이팅해요!"
+          />
+          <Link href="/meetings/new">
+            <Button size="lg" className="shadow-md">
+              <Plus className="h-4 w-4" />새 회의 시작
+            </Button>
+          </Link>
         </div>
-        <Link href="/meetings/new">
-          <Button>
-            <Plus className="h-4 w-4" />새 회의
-          </Button>
-        </Link>
       </div>
 
       {meetings.length === 0 ? (

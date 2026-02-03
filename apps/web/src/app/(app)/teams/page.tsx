@@ -7,6 +7,7 @@ import { useState } from "react";
 import { selectedTeamIdAtom } from "@/atoms/team";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Weeky } from "@/components/weeky/weeky";
 import {
   Dialog,
   DialogContent,
@@ -97,8 +98,8 @@ export default function TeamsPage() {
   if (isLoading) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-8">
-        <div className="flex items-center justify-center py-16">
-          <p className="text-muted-foreground">팀 목록을 불러오는 중...</p>
+        <div className="flex flex-col items-center justify-center py-16">
+          <Weeky expression="thinking" size="lg" message="팀 목록을 불러오고 있어요..." />
         </div>
       </div>
     );
@@ -107,8 +108,8 @@ export default function TeamsPage() {
   if (error) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-8">
-        <div className="flex items-center justify-center py-16">
-          <p className="text-destructive">팀 목록을 불러오는데 실패했습니다</p>
+        <div className="flex flex-col items-center justify-center py-16">
+          <Weeky expression="sorry" size="lg" message="팀 목록을 불러오는데 실패했어요" />
         </div>
       </div>
     );
@@ -116,7 +117,14 @@ export default function TeamsPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
-      <div className="mb-8 text-center">
+      <div className="mb-8 flex flex-col items-center">
+        <Weeky
+          expression="greeting"
+          variant="bubble"
+          size="lg"
+          message="안녕하세요! 어떤 팀으로 입장하시겠어요?"
+          className="mb-6"
+        />
         <h1 className="text-3xl font-bold">팀 선택</h1>
         <p className="mt-2 text-muted-foreground">회의를 진행할 팀을 선택해주세요</p>
       </div>

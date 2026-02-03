@@ -9,6 +9,7 @@ import { recordingAtom } from "@/atoms/recording";
 import { selectedMembersAtom, type TeamMember, teamMembersAtom } from "@/atoms/team";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Weeky } from "@/components/weeky/weeky";
 import {
   Dialog,
   DialogContent,
@@ -238,17 +239,39 @@ export default function MeetingSetupPage() {
     });
   };
 
+  // Get summary of weekly report tasks for smart preview
+  const getWeeklyReportSummary = (): string[] => {
+    const parsedData = weeklyReportPreview?.parsed_data as unknown as ParsedWeeklyData | undefined;
+    if (!parsedData?.team_members) return [];
+
+    const summary: string[] = [];
+    for (const member of parsedData.team_members.slice(0, 3)) {
+      const taskCount = member.categories.reduce((acc, cat) => acc + cat.tasks.length, 0);
+      if (taskCount > 0) {
+        summary.push(`${member.name}: ${taskCount}개 항목`);
+      }
+    }
+    return summary;
+  };
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">회의 설정</h1>
-        <p className="text-sm text-muted-foreground">녹음 파일을 업로드하고 설정을 완료하세요</p>
+      <div className="mb-8 flex items-center gap-4">
+        <Weeky
+          expression={confluence.weeklyReportLoaded ? "noting" : "questioning"}
+          size="md"
+          message={
+            confluence.weeklyReportLoaded
+              ? "주간업무록을 확인했어요! 녹음 파일을 업로드해주세요."
+              : "회의록을 생성할 준비를 해볼까요?"
+          }
+        />
       </div>
 
       <div className="space-y-6">
         {/* Confluence Weekly Report - only for weekly_report type */}
         {!isGeneralMeeting && (
-          <Card>
+          <Card className={cn(confluence.weeklyReportLoaded && "border-primary/30 bg-primary/5")}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <LinkIcon className="h-4 w-4" />
@@ -283,7 +306,38 @@ export default function MeetingSetupPage() {
                   )}
                 </Button>
               </div>
-              {confluence.weeklyReportLoaded && (
+
+              {/* Smart Preview */}
+              {confluence.weeklyReportLoaded && weeklyReportPreview && (
+                <div className="mt-4 rounded-lg bg-gradient-to-br from-[oklch(0.97_0.03_175)] to-[oklch(0.95_0.05_200)] p-4">
+                  <div className="flex items-start gap-3">
+                    <Weeky expression="noting" size="sm" message="" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-foreground mb-2">
+                        오늘의 안건을 확인했어요!
+                      </p>
+                      <ul className="space-y-1">
+                        {getWeeklyReportSummary().map((item, idx) => (
+                          <li key={idx} className="text-xs text-muted-foreground flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="mt-2 p-0 h-auto text-xs"
+                        onClick={() => setWeeklyReportPreview(weeklyReportPreview)}
+                      >
+                        전체 내용 보기 →
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {confluence.weeklyReportLoaded && !weeklyReportPreview && (
                 <p className="mt-2 text-xs text-green-600">주간업무록이 연결되었습니다</p>
               )}
             </CardContent>

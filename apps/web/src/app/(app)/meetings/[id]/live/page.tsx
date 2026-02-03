@@ -11,6 +11,7 @@ import {
   totalItemsForSpeakerAtom,
 } from "@/atoms/orchestration";
 import { QuestionTreePanel } from "@/components/meeting/question-tree-panel";
+import { AudioWave } from "@/components/ui/audio-wave";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import type { WeekyExpression } from "@/components/weeky/weeky";
@@ -254,11 +255,14 @@ export default function LiveMeetingPage() {
 
         {/* Controls */}
         <div className="w-full max-w-lg space-y-4">
-          {/* Recording indicator */}
+          {/* Recording indicator with audio wave */}
           {recorderStatus === "recording" && (
-            <div className="flex items-center justify-center gap-2 text-sm">
+            <div className="flex items-center justify-center gap-3 rounded-full bg-red-50 px-4 py-2">
               <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-muted-foreground">녹음 중 {formatDuration(duration)}</span>
+              <AudioWave isActive bars={7} variant="recording" size="md" />
+              <span className="text-sm font-medium text-red-600">
+                REC {formatDuration(duration)}
+              </span>
             </div>
           )}
 
