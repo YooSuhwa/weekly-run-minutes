@@ -1,10 +1,10 @@
 import { createStore } from "jotai";
 import { describe, expect, it } from "vitest";
 import {
+  type ConfluencePage,
+  type ConfluenceState,
+  type ConfluenceStatus,
   confluenceAtom,
-  ConfluencePage,
-  ConfluenceState,
-  ConfluenceStatus,
 } from "../confluence";
 
 describe("confluence atoms", () => {
@@ -166,12 +166,7 @@ describe("confluence atoms", () => {
 
       it("should accept all valid ConfluenceStatus values", () => {
         const store = createStore();
-        const validStatuses: ConfluenceStatus[] = [
-          "idle",
-          "uploading",
-          "uploaded",
-          "error",
-        ];
+        const validStatuses: ConfluenceStatus[] = ["idle", "uploading", "uploaded", "error"];
 
         for (const status of validStatuses) {
           store.set(confluenceAtom, {
@@ -210,9 +205,7 @@ describe("confluence atoms", () => {
           ...store.get(confluenceAtom),
           publishedPage: page,
         });
-        expect(store.get(confluenceAtom).publishedPage?.title).toBe(
-          "주간회의록 - 제품기술팀"
-        );
+        expect(store.get(confluenceAtom).publishedPage?.title).toBe("주간회의록 - 제품기술팀");
       });
 
       it("should allow resetting to null after upload", () => {
@@ -253,9 +246,7 @@ describe("confluence atoms", () => {
           ...store.get(confluenceAtom),
           publishedPage: page2,
         });
-        expect(store.get(confluenceAtom).publishedPage?.title).toBe(
-          "Updated Title"
-        );
+        expect(store.get(confluenceAtom).publishedPage?.title).toBe("Updated Title");
       });
     });
 
@@ -353,9 +344,7 @@ describe("confluence atoms", () => {
 
         const finalState = store.get(confluenceAtom);
         expect(finalState.publishStatus).toBe("error");
-        expect(finalState.errorMessage).toBe(
-          "Confluence API error: 401 Unauthorized"
-        );
+        expect(finalState.errorMessage).toBe("Confluence API error: 401 Unauthorized");
         expect(finalState.publishedPage).toBeNull();
       });
 
@@ -444,9 +433,7 @@ describe("confluence atoms", () => {
         expect(store2.get(confluenceAtom).publishStatus).toBe("idle");
 
         // store1 should have updated state
-        expect(store1.get(confluenceAtom).weeklyReportPageId).toBe(
-          "store1-page"
-        );
+        expect(store1.get(confluenceAtom).weeklyReportPageId).toBe("store1-page");
         expect(store1.get(confluenceAtom).publishStatus).toBe("uploaded");
       });
     });

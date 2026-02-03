@@ -2,8 +2,8 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { Provider, useAtomValue } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { orchestrationAtom } from "@/atoms/orchestration";
 import type { OrchestrationState, QuestionTree } from "@/atoms/orchestration";
+import { orchestrationAtom } from "@/atoms/orchestration";
 import { useMeetingOrchestration } from "../use-meeting-orchestration";
 
 // Mock the API functions
@@ -15,15 +15,17 @@ vi.mock("@/lib/api/__generated__/realtime-meeting/realtime-meeting", () => ({
 }));
 
 import {
-  startRealtimeMeetingApiV1RealtimeMeetingsMeetingIdStartPost,
   advanceToNextItemApiV1RealtimeMeetingsMeetingIdNextItemPost,
   advanceToNextSpeakerApiV1RealtimeMeetingsMeetingIdNextSpeakerPost,
   endRealtimeMeetingApiV1RealtimeMeetingsMeetingIdEndPost,
+  startRealtimeMeetingApiV1RealtimeMeetingsMeetingIdStartPost,
 } from "@/lib/api/__generated__/realtime-meeting/realtime-meeting";
 
 const mockStartMeeting = vi.mocked(startRealtimeMeetingApiV1RealtimeMeetingsMeetingIdStartPost);
 const mockNextItem = vi.mocked(advanceToNextItemApiV1RealtimeMeetingsMeetingIdNextItemPost);
-const mockNextSpeaker = vi.mocked(advanceToNextSpeakerApiV1RealtimeMeetingsMeetingIdNextSpeakerPost);
+const mockNextSpeaker = vi.mocked(
+  advanceToNextSpeakerApiV1RealtimeMeetingsMeetingIdNextSpeakerPost,
+);
 const mockEndMeeting = vi.mocked(endRealtimeMeetingApiV1RealtimeMeetingsMeetingIdEndPost);
 
 const mockQuestionTree: QuestionTree = {

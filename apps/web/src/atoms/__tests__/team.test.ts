@@ -1,14 +1,91 @@
 import { createStore } from "jotai";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   currentTeamAtom,
   selectedMembersAtom,
-  teamMembersAtom,
+  selectedTeamIdAtom,
   type Team,
   type TeamMember,
+  teamMembersAtom,
 } from "../team";
 
+// Mock localStorage for atomWithStorage tests
+const localStorageMock = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: vi.fn((key: string) => store[key] || null),
+    setItem: vi.fn((key: string, value: string) => {
+      store[key] = value;
+    }),
+    removeItem: vi.fn((key: string) => {
+      delete store[key];
+    }),
+    clear: vi.fn(() => {
+      store = {};
+    }),
+  };
+})();
+
+Object.defineProperty(globalThis, "localStorage", { value: localStorageMock });
+
 describe("team atoms", () => {
+  beforeEach(() => {
+    localStorageMock.clear();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    localStorageMock.clear();
+  });
+
+  describe("selectedTeamIdAtom", () => {
+    it("should have initial value of null", () => {
+      const store = createStore();
+      expect(store.get(selectedTeamIdAtom)).toBeNull();
+    });
+
+    it("should store a team ID", () => {
+      const store = createStore();
+      store.set(selectedTeamIdAtom, "team-123");
+      expect(store.get(selectedTeamIdAtom)).toBe("team-123");
+    });
+
+    it("should allow setting back to null", () => {
+      const store = createStore();
+      store.set(selectedTeamIdAtom, "team-123");
+      store.set(selectedTeamIdAtom, null);
+      expect(store.get(selectedTeamIdAtom)).toBeNull();
+    });
+
+    it("should replace existing team ID when set", () => {
+      const store = createStore();
+      store.set(selectedTeamIdAtom, "team-1");
+      store.set(selectedTeamIdAtom, "team-2");
+      expect(store.get(selectedTeamIdAtom)).toBe("team-2");
+    });
+
+    it("should use correct localStorage key", () => {
+      const store = createStore();
+      store.set(selectedTeamIdAtom, "team-123");
+      // The atom uses 'weeklyrun:selectedTeamId' as the key
+      expect(localStorageMock.setItem).toHaveBeenCalledWith(
+        "weeklyrun:selectedTeamId",
+        expect.any(String),
+      );
+    });
+
+    it("should maintain independent state across stores", () => {
+      const store1 = createStore();
+      const store2 = createStore();
+
+      store1.set(selectedTeamIdAtom, "team-1");
+      store2.set(selectedTeamIdAtom, "team-2");
+
+      expect(store1.get(selectedTeamIdAtom)).toBe("team-1");
+      expect(store2.get(selectedTeamIdAtom)).toBe("team-2");
+    });
+  });
+
   describe("currentTeamAtom", () => {
     it("should have initial value of null", () => {
       const store = createStore();

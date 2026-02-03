@@ -1,6 +1,6 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Provider, createStore } from "jotai";
+import { createStore, Provider } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -45,6 +45,11 @@ vi.mock("@/components/ui/toast", () => ({
     success: mockToastSuccess,
     error: mockToastError,
   }),
+}));
+
+// Mock meetings API
+vi.mock("@/lib/api/__generated__/meetings/meetings", () => ({
+  useGetMeetingApiV1MeetingsMeetingIdGet: () => ({ data: { meeting_type: "weekly_report" } }),
 }));
 
 // Mock teams API
@@ -122,12 +127,18 @@ vi.mock("@/components/ui/file-upload", () => ({
       {file ? (
         <div data-testid="file-selected">
           <span data-testid="file-name">{file.name}</span>
-          <button onClick={onFileRemove} disabled={disabled} data-testid="remove-file-btn">
+          <button
+            type="button"
+            onClick={onFileRemove}
+            disabled={disabled}
+            data-testid="remove-file-btn"
+          >
             Remove
           </button>
         </div>
       ) : (
         <button
+          type="button"
           onClick={() => onFileSelect(new File(["test"], "test.mp3", { type: "audio/mpeg" }))}
           disabled={disabled}
           data-testid="select-file-btn"
@@ -172,9 +183,7 @@ describe("MeetingSetupPage", () => {
     it("renders page title and subtitle", () => {
       renderWithProviders(<MeetingSetupPage />);
       expect(screen.getByText("회의 설정")).toBeInTheDocument();
-      expect(
-        screen.getByText("녹음 파일을 업로드하고 설정을 완료하세요"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("녹음 파일을 업로드하고 설정을 완료하세요")).toBeInTheDocument();
     });
 
     it("renders weekly report section with Confluence input", () => {

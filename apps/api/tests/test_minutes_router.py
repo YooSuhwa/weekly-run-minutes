@@ -9,9 +9,9 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from src.models import Meeting, MeetingMinutes, MeetingStatus, Transcript
-from src.models.team import Team, TeamMember
 from src.models.weekly_report import WeeklyReport
 from src.routers.minutes import generate_minutes_task
+from src.services.general_meeting import GeneralMinutesResult
 from src.services.minutes_generator import (
     CorrectionItem,
     MinutesGenerationError,
@@ -425,7 +425,7 @@ class TestGenerateMinutesTask:
 
     @pytest.mark.asyncio
     async def test_successful_generation(
-        self, client: AsyncClient, meeting_with_transcripts_for_generation: str, db_session
+        self, client: AsyncClient, meeting_with_transcripts_for_generation: str, db_session  # noqa: ARG002
     ):
         """Should generate minutes and store them with corrections."""
         meeting_id = UUID(meeting_with_transcripts_for_generation)
@@ -540,7 +540,7 @@ class TestGenerateMinutesTask:
 
     @pytest.mark.asyncio
     async def test_minutes_generation_error_sets_failed(
-        self, client: AsyncClient, meeting_with_transcripts_for_generation: str, db_session
+        self, client: AsyncClient, meeting_with_transcripts_for_generation: str, db_session  # noqa: ARG002
     ):
         """Should set FAILED status when MinutesGenerationError occurs."""
         meeting_id = UUID(meeting_with_transcripts_for_generation)
@@ -571,7 +571,7 @@ class TestGenerateMinutesTask:
 
     @pytest.mark.asyncio
     async def test_unexpected_error_sets_failed(
-        self, client: AsyncClient, meeting_with_transcripts_for_generation: str, db_session
+        self, client: AsyncClient, meeting_with_transcripts_for_generation: str, db_session  # noqa: ARG002
     ):
         """Should set FAILED status when unexpected exception occurs."""
         meeting_id = UUID(meeting_with_transcripts_for_generation)
@@ -763,3 +763,312 @@ class TestGenerateMinutesTask:
             assert "[speaker_1] 두번째 발화" in transcript_text
             # Falls back to "Speaker"
             assert "[Speaker] 세번째 발화" in transcript_text
+
+
+class TestGeneralMeetingMinutesGeneration:
+    """P2: Tests for general meeting minutes generation."""
+
+    @pytest.fixture
+    async def general_meeting_with_transcripts(
+        self, client: AsyncClient, db_session
+    ) -> str:
+        """Create a general meeting with transcripts and agenda items."""
+        # Create team with members
+        team_response = await client.post("/api/v1/teams", json={"name": "일반회의팀"})
+        team_id = team_response.json()["id"]
+
+        await client.post(
+            f"/api/v1/teams/{team_id}/members",
+            json={"name": "김철수", "presentation_order": 1},
+        )
+        await client.post(
+            f"/api/v1/teams/{team_id}/members",
+            json={"name": "이영희", "presentation_order": 2},
+        )
+
+        # Create general meeting with agenda
+        meeting_response = await client.post(
+            "/api/v1/meetings",
+            json={
+                "team_id": team_id,
+                "meeting_date": "2024-01-20",
+                "title": "프로젝트 킥오프",
+                "meeting_type": "general",
+                "agenda_items": [
+                    {
+                        "title": "프로젝트 개요",
+                        "description": "신규 프로젝트 소개",
+                        "presenter": "김철수",
+                        "duration_minutes": 15,
+                    },
+                    {
+                        "title": "일정 논의",
+                        "description": "마일스톤 설정",
+                        "duration_minutes": 20,
+                    },
+                ],
+            },
+        )
+        meeting_id = meeting_response.json()["id"]
+        mid = UUID(meeting_id)
+
+        # Set status to transcribed
+        await client.patch(
+            f"/api/v1/meetings/{meeting_id}/status",
+            json={"status": "transcribed"},
+        )
+
+        # Add transcript segments
+        segments = [
+            Transcript(
+                meeting_id=mid,
+                start_time=0.0,
+                end_time=5.0,
+                text="안녕하세요, 프로젝트 킥오프 회의 시작합니다.",
+                speaker_label="speaker_0",
+                speaker_name="김철수",
+                confidence=0.95,
+            ),
+            Transcript(
+                meeting_id=mid,
+                start_time=5.0,
+                end_time=12.0,
+                text="이번 프로젝트는 에이피아이 개발입니다.",
+                speaker_label="speaker_0",
+                speaker_name="김철수",
+                confidence=0.90,
+            ),
+            Transcript(
+                meeting_id=mid,
+                start_time=12.0,
+                end_time=20.0,
+                text="일정은 다음 주 월요일까지 완료하겠습니다.",
+                speaker_label="speaker_1",
+                speaker_name="이영희",
+                confidence=0.88,
+            ),
+        ]
+        for seg in segments:
+            db_session.add(seg)
+        await db_session.commit()
+
+        return meeting_id
+
+    @pytest.mark.asyncio
+    async def test_generate_general_meeting_minutes(
+        self, client: AsyncClient, general_meeting_with_transcripts: str, db_session  # noqa: ARG002
+    ):
+        """P2: Should generate minutes for general meeting using GeneralMeetingService."""
+        meeting_id = UUID(general_meeting_with_transcripts)
+
+        mock_result = GeneralMinutesResult(
+            content_markdown="# 2024-01-20 프로젝트 킥오프 회의록\n\n## 참석자\n- 김철수\n- 이영희\n\n## 아젠다\n\n### 프로젝트 개요\n- API 개발 프로젝트 소개\n\n### 일정 논의\n- 다음 주 월요일까지 완료",
+            ai_model="gpt-4o",
+            prompt_version="1.0.0",
+            corrections=[
+                CorrectionItem(
+                    original="에이피아이",
+                    corrected="API",
+                    category="terminology",
+                    paragraph_index=5,
+                    start_offset=2,
+                    end_offset=5,
+                ),
+            ],
+            action_items=[
+                {"assignee": "이영희", "task": "개발 완료", "due_date": "2024-01-27"}
+            ],
+            decisions=["다음 주 월요일까지 완료"],
+            topics_summary=[
+                {"topic": "프로젝트 개요", "summary": "API 개발", "speakers": ["김철수"]}
+            ],
+        )
+
+        @asynccontextmanager
+        async def mock_session_factory():
+            yield db_session
+
+        with (
+            patch("src.routers.minutes.async_session_factory", mock_session_factory),
+            patch("src.routers.minutes.GeneralMeetingService") as mock_gen_cls,
+        ):
+            mock_gen = AsyncMock()
+            mock_gen.generate_minutes = AsyncMock(return_value=mock_result)
+            mock_gen_cls.return_value = mock_gen
+
+            await generate_minutes_task(meeting_id)
+
+            # Verify GeneralMeetingService was called with agenda items
+            call_kwargs = mock_gen.generate_minutes.call_args[1]
+            assert call_kwargs["meeting_title"] == "프로젝트 킥오프"
+            assert call_kwargs["agenda_items"] is not None
+            assert len(call_kwargs["agenda_items"]) == 2
+            assert call_kwargs["agenda_items"][0].title == "프로젝트 개요"
+            assert call_kwargs["agenda_items"][0].presenter == "김철수"
+
+        # Verify meeting status is DRAFT_READY
+        result = await db_session.execute(
+            select(Meeting).where(Meeting.id == meeting_id)
+        )
+        meeting = result.scalar_one()
+        assert meeting.status == MeetingStatus.DRAFT_READY
+
+        # Verify minutes were stored
+        minutes_result = await db_session.execute(
+            select(MeetingMinutes).where(MeetingMinutes.meeting_id == meeting_id)
+        )
+        minutes = minutes_result.scalar_one()
+        assert "회의록" in minutes.content_markdown
+        assert minutes.prompt_version == "1.0.0"  # General meeting version
+        assert len(minutes.corrections) == 1
+
+    @pytest.mark.asyncio
+    async def test_generate_general_meeting_minutes_without_agenda(
+        self, client: AsyncClient, db_session
+    ):
+        """P2: Should generate general meeting minutes even without agenda items."""
+        # Create team with members
+        team_response = await client.post("/api/v1/teams", json={"name": "노아젠다팀"})
+        team_id = team_response.json()["id"]
+
+        await client.post(
+            f"/api/v1/teams/{team_id}/members",
+            json={"name": "테스터", "presentation_order": 1},
+        )
+
+        # Create general meeting WITHOUT agenda
+        meeting_response = await client.post(
+            "/api/v1/meetings",
+            json={
+                "team_id": team_id,
+                "meeting_date": "2024-01-21",
+                "title": "즉흥 회의",
+                "meeting_type": "general",
+                # No agenda_items
+            },
+        )
+        meeting_id = UUID(meeting_response.json()["id"])
+
+        await client.patch(
+            f"/api/v1/meetings/{str(meeting_id)}/status",
+            json={"status": "transcribed"},
+        )
+
+        # Add transcript
+        transcript = Transcript(
+            meeting_id=meeting_id,
+            start_time=0.0,
+            end_time=5.0,
+            text="회의 시작합니다.",
+            speaker_label="speaker_0",
+            confidence=0.9,
+        )
+        db_session.add(transcript)
+        await db_session.commit()
+
+        mock_result = GeneralMinutesResult(
+            content_markdown="# 2024-01-21 즉흥 회의 회의록\n\n## 참석자\n- 테스터",
+            ai_model="gpt-4o",
+            prompt_version="1.0.0",
+            corrections=[],
+            action_items=[],
+            decisions=[],
+            topics_summary=[],
+        )
+
+        @asynccontextmanager
+        async def mock_session_factory():
+            yield db_session
+
+        with (
+            patch("src.routers.minutes.async_session_factory", mock_session_factory),
+            patch("src.routers.minutes.GeneralMeetingService") as mock_gen_cls,
+        ):
+            mock_gen = AsyncMock()
+            mock_gen.generate_minutes = AsyncMock(return_value=mock_result)
+            mock_gen_cls.return_value = mock_gen
+
+            await generate_minutes_task(meeting_id)
+
+            # Verify agenda_items is None
+            call_kwargs = mock_gen.generate_minutes.call_args[1]
+            assert call_kwargs["agenda_items"] is None
+
+        # Verify meeting status is DRAFT_READY
+        result = await db_session.execute(
+            select(Meeting).where(Meeting.id == meeting_id)
+        )
+        meeting = result.scalar_one()
+        assert meeting.status == MeetingStatus.DRAFT_READY
+
+    @pytest.mark.asyncio
+    async def test_weekly_report_meeting_uses_correct_service(
+        self, client: AsyncClient, db_session
+    ):
+        """P2: Should use MinutesGeneratorService for weekly_report meeting type."""
+        # Create team with members
+        team_response = await client.post("/api/v1/teams", json={"name": "주간회의팀"})
+        team_id = team_response.json()["id"]
+
+        await client.post(
+            f"/api/v1/teams/{team_id}/members",
+            json={"name": "테스터", "presentation_order": 1},
+        )
+
+        # Create weekly_report meeting (default type)
+        meeting_response = await client.post(
+            "/api/v1/meetings",
+            json={
+                "team_id": team_id,
+                "meeting_date": "2024-01-22",
+                "title": "주간회의",
+                "meeting_type": "weekly_report",
+            },
+        )
+        meeting_id = UUID(meeting_response.json()["id"])
+
+        await client.patch(
+            f"/api/v1/meetings/{str(meeting_id)}/status",
+            json={"status": "transcribed"},
+        )
+
+        # Add transcript
+        transcript = Transcript(
+            meeting_id=meeting_id,
+            start_time=0.0,
+            end_time=5.0,
+            text="주간 업무 보고합니다.",
+            speaker_label="speaker_0",
+            confidence=0.9,
+        )
+        db_session.add(transcript)
+        await db_session.commit()
+
+        mock_result = MinutesGenerationResult(
+            content_markdown="# 주간회의 회의록",
+            ai_model="gpt-4o",
+            prompt_version="2.0.0",
+            corrections=[],
+        )
+
+        @asynccontextmanager
+        async def mock_session_factory():
+            yield db_session
+
+        with (
+            patch("src.routers.minutes.async_session_factory", mock_session_factory),
+            patch("src.routers.minutes.MinutesGeneratorService") as mock_weekly_cls,
+            patch("src.routers.minutes.GeneralMeetingService") as mock_general_cls,
+        ):
+            mock_weekly = AsyncMock()
+            mock_weekly.generate_minutes = AsyncMock(return_value=mock_result)
+            mock_weekly_cls.return_value = mock_weekly
+
+            mock_general = AsyncMock()
+            mock_general_cls.return_value = mock_general
+
+            await generate_minutes_task(meeting_id)
+
+            # Verify MinutesGeneratorService was called, not GeneralMeetingService
+            mock_weekly.generate_minutes.assert_called_once()
+            mock_general.generate_minutes.assert_not_called()

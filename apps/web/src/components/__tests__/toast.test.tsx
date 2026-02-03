@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Provider, createStore, useSetAtom } from "jotai";
+import { createStore, Provider, useSetAtom } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { addToastAtom, uiAtom } from "@/atoms/ui";
@@ -11,13 +11,25 @@ function AllToastTriggers() {
   const toast = useToast();
   return (
     <div>
-      <button type="button" onClick={() => toast.success("Success message")} data-testid="trigger-success">
+      <button
+        type="button"
+        onClick={() => toast.success("Success message")}
+        data-testid="trigger-success"
+      >
         Success
       </button>
-      <button type="button" onClick={() => toast.error("Error message")} data-testid="trigger-error">
+      <button
+        type="button"
+        onClick={() => toast.error("Error message")}
+        data-testid="trigger-error"
+      >
         Error
       </button>
-      <button type="button" onClick={() => toast.warning("Warning message")} data-testid="trigger-warning">
+      <button
+        type="button"
+        onClick={() => toast.warning("Warning message")}
+        data-testid="trigger-warning"
+      >
         Warning
       </button>
       <button type="button" onClick={() => toast.info("Info message")} data-testid="trigger-info">
@@ -50,7 +62,10 @@ function DirectToastAdder() {
   );
 }
 
-function renderWithProviders(ui: ReactNode, initialToasts: Parameters<typeof uiAtom["init"]>[0]["toasts"] = []) {
+function renderWithProviders(
+  ui: ReactNode,
+  initialToasts: Parameters<(typeof uiAtom)["init"]>[0]["toasts"] = [],
+) {
   const store = createStore();
   store.set(uiAtom, { isLoading: false, toasts: initialToasts });
   return { store, ...render(<Provider store={store}>{ui}</Provider>) };

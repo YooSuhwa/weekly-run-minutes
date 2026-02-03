@@ -1,11 +1,11 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
-import { Provider, createStore } from "jotai";
+import { createStore, Provider } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  orchestrationAtom,
   type OrchestrationState,
+  orchestrationAtom,
   type QuestionCategory,
   type QuestionItem,
   type QuestionTree,
@@ -627,7 +627,7 @@ describe("QuestionTreePanel", () => {
           createSpeakerQuestions({
             categories: [
               createQuestionCategory({
-                items: [createQuestionItem({ text: "질문 & 답변 < > \"" })],
+                items: [createQuestionItem({ text: '질문 & 답변 < > "' })],
               }),
             ],
           }),
@@ -830,11 +830,7 @@ describe("QuestionTreePanel", () => {
           createSpeakerQuestions({
             categories: [
               createQuestionCategory({
-                items: [
-                  createQuestionItem(),
-                  createQuestionItem(),
-                  createQuestionItem(),
-                ],
+                items: [createQuestionItem(), createQuestionItem(), createQuestionItem()],
               }),
               createQuestionCategory({
                 items: [createQuestionItem(), createQuestionItem()],

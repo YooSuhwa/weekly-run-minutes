@@ -11,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.models.base import BaseModel
 
 if TYPE_CHECKING:
+    from src.models.filtered_content import FilteredContent
     from src.models.recording import Recording
     from src.models.team import Team
     from src.models.transcript import Transcript
@@ -22,6 +23,13 @@ class MeetingMode(str, Enum):
 
     UPLOAD = "upload"  # P1-lite: 파일 업로드 모드
     REALTIME = "realtime"  # P1-full: 실시간 회의 모드
+
+
+class MeetingType(str, Enum):
+    """Meeting type enum - P2 feature."""
+
+    WEEKLY_REPORT = "weekly_report"  # 주간회의 - 주간업무록 기반
+    GENERAL = "general"  # 일반 회의 - 자유 형식
 
 
 class MeetingStatus(str, Enum):
@@ -62,7 +70,17 @@ class Meeting(BaseModel):
         default=MeetingMode.UPLOAD,
         nullable=False,
     )
+    # P2: Meeting type - weekly report based or general free-form
+    meeting_type: Mapped[str] = mapped_column(
+        String(20),
+        default=MeetingType.WEEKLY_REPORT,
+        nullable=False,
+    )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # P2: Agenda items for general meetings (optional)
+    # Structure: [{"title": "...", "description": "...", "presenter": "...", "duration_minutes": 10}]
+    agenda_items: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     # Realtime orchestration state (P1-full)
     current_speaker_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -98,6 +116,12 @@ class Meeting(BaseModel):
         back_populates="meeting",
         uselist=False,
         cascade="all, delete-orphan",
+    )
+    filtered_contents: Mapped[list["FilteredContent"]] = relationship(
+        "FilteredContent",
+        back_populates="meeting",
+        cascade="all, delete-orphan",
+        order_by="FilteredContent.start_time",
     )
 
 

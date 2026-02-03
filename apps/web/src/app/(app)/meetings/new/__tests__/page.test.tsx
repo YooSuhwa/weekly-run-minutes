@@ -1,8 +1,10 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Provider, createStore } from "jotai";
+import { createStore, Provider } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { selectedTeamIdAtom } from "@/atoms/team";
 
 // Use vi.hoisted() for stable mock references
 const mockPush = vi.hoisted(() => vi.fn());
@@ -36,8 +38,11 @@ vi.mock("@/lib/api/__generated__/meetings/meetings", () => ({
 
 import NewMeetingPage from "../page";
 
-function renderWithProviders(ui: ReactNode) {
+const TEST_TEAM_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+
+function renderWithProviders(ui: ReactNode, teamId: string | null = TEST_TEAM_ID) {
   const store = createStore();
+  store.set(selectedTeamIdAtom, teamId);
   return render(<Provider store={store}>{ui}</Provider>);
 }
 
@@ -64,11 +69,23 @@ describe("NewMeetingPage", () => {
     expect(screen.getByText("회의 방식을 선택하세요")).toBeInTheDocument();
   });
 
+  it("renders meeting type selection cards", () => {
+    renderWithProviders(<NewMeetingPage />);
+    expect(screen.getByText("주간회의")).toBeInTheDocument();
+    expect(screen.getByText("일반 회의")).toBeInTheDocument();
+  });
+
   it("upload mode is selected by default", () => {
     renderWithProviders(<NewMeetingPage />);
     // Upload card should have ring-2 ring-primary class
     const uploadCard = screen.getByText("녹음 파일 업로드").closest("[class*='cursor-pointer']");
     expect(uploadCard?.className).toContain("ring-2");
+  });
+
+  it("weekly_report type is selected by default", () => {
+    renderWithProviders(<NewMeetingPage />);
+    const weeklyCard = screen.getByText("주간회의").closest("[class*='cursor-pointer']");
+    expect(weeklyCard?.className).toContain("ring-2");
   });
 
   it("can select realtime mode", async () => {
@@ -81,12 +98,22 @@ describe("NewMeetingPage", () => {
     expect(realtimeCard?.className).toContain("ring-2");
   });
 
+  it("can select general meeting type", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<NewMeetingPage />);
+
+    const generalCard = screen.getByText("일반 회의").closest("[class*='cursor-pointer']");
+    await user.click(generalCard!);
+
+    expect(generalCard?.className).toContain("ring-2");
+  });
+
   it("shows next button", () => {
     renderWithProviders(<NewMeetingPage />);
     expect(screen.getByRole("button", { name: "다음" })).toBeInTheDocument();
   });
 
-  it("calls mutate on next button click", async () => {
+  it("calls mutate with selected team_id on next button click", async () => {
     const user = userEvent.setup();
     renderWithProviders(<NewMeetingPage />);
 
@@ -97,7 +124,29 @@ describe("NewMeetingPage", () => {
     expect(mockMutate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          team_id: TEST_TEAM_ID,
           meeting_mode: "upload",
+          meeting_type: "weekly_report",
+        }),
+      }),
+    );
+  });
+
+  it("sends meeting_type: general when general is selected", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<NewMeetingPage />);
+
+    const generalCard = screen.getByText("일반 회의").closest("[class*='cursor-pointer']");
+    await user.click(generalCard!);
+
+    const nextButton = screen.getByRole("button", { name: "다음" });
+    await user.click(nextButton);
+
+    expect(mockMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          meeting_type: "general",
+          title: expect.stringContaining("일반 회의"),
         }),
       }),
     );
@@ -211,11 +260,44 @@ describe("NewMeetingPage", () => {
     expect(mockMutate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          team_id: "00000000-0000-0000-0000-000000000001",
+          team_id: TEST_TEAM_ID,
           meeting_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
           title: expect.stringContaining("주간회의"),
         }),
       }),
     );
+  });
+
+  describe("when no team is selected", () => {
+    it("shows team selection warning", () => {
+      renderWithProviders(<NewMeetingPage />, null);
+      expect(screen.getByText(/팀을 먼저 선택해주세요/)).toBeInTheDocument();
+    });
+
+    it("disables next button", () => {
+      renderWithProviders(<NewMeetingPage />, null);
+      const nextButton = screen.getByRole("button", { name: "다음" });
+      expect(nextButton).toBeDisabled();
+    });
+
+    it("does not call mutate when next is clicked", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<NewMeetingPage />, null);
+
+      const nextButton = screen.getByRole("button", { name: "다음" });
+      await user.click(nextButton);
+
+      expect(mockMutate).not.toHaveBeenCalled();
+    });
+
+    it("shows link to team selection page", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<NewMeetingPage />, null);
+
+      const teamLink = screen.getByText("팀 선택하기");
+      await user.click(teamLink);
+
+      expect(mockPush).toHaveBeenCalledWith("/teams");
+    });
   });
 });

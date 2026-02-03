@@ -16,5 +16,8 @@ export interface TeamCreate {
    * @maxLength 100
    */
   name: string;
+  password?: string | null;
+  confluence_base_url?: string | null;
+  confluence_space_key?: string | null;
   members?: TeamMemberCreate[] | null;
 }

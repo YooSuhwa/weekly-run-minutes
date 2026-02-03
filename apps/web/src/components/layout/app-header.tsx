@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/dashboard", label: "대시보드" },
   { href: "/team", label: "팀원 관리" },
+  { href: "/settings", label: "설정" },
 ];
 
 export function AppHeader() {

@@ -73,6 +73,42 @@ class TestListMeetings:
         )
         assert response.status_code == 200
 
+    @pytest.mark.asyncio
+    async def test_filter_by_meeting_type(self, client: AsyncClient, team_id: str):
+        """P2: Should filter meetings by meeting_type."""
+        # Create weekly report meeting
+        await client.post(
+            "/api/v1/meetings",
+            json={
+                "team_id": team_id,
+                "meeting_date": "2024-01-15",
+                "title": "주간회의",
+                "meeting_type": "weekly_report",
+            },
+        )
+        # Create general meeting
+        await client.post(
+            "/api/v1/meetings",
+            json={
+                "team_id": team_id,
+                "meeting_date": "2024-01-16",
+                "title": "일반회의",
+                "meeting_type": "general",
+            },
+        )
+
+        # Filter by weekly_report
+        response = await client.get("/api/v1/meetings?meeting_type=weekly_report")
+        assert response.status_code == 200
+        data = response.json()
+        assert all(m["meeting_type"] == "weekly_report" for m in data)
+
+        # Filter by general
+        response = await client.get("/api/v1/meetings?meeting_type=general")
+        assert response.status_code == 200
+        data = response.json()
+        assert all(m["meeting_type"] == "general" for m in data)
+
 
 class TestCreateMeeting:
     @pytest.mark.asyncio
@@ -90,6 +126,7 @@ class TestCreateMeeting:
         assert data["title"] == "2024-01-15 주간회의"
         assert data["status"] == "created"
         assert data["team_id"] == team_id
+        assert data["meeting_type"] == "weekly_report"  # default
         assert "id" in data
 
     @pytest.mark.asyncio
@@ -97,6 +134,76 @@ class TestCreateMeeting:
         response = await client.post(
             "/api/v1/meetings",
             json={"team_id": team_id, "meeting_date": "2024-01-15", "title": ""},
+        )
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_create_general_meeting(self, client: AsyncClient, team_id: str):
+        """P2: Should create a general meeting without weekly report."""
+        response = await client.post(
+            "/api/v1/meetings",
+            json={
+                "team_id": team_id,
+                "meeting_date": "2024-01-15",
+                "title": "프로젝트 킥오프",
+                "meeting_type": "general",
+            },
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["meeting_type"] == "general"
+        assert data["agenda_items"] is None
+
+    @pytest.mark.asyncio
+    async def test_create_general_meeting_with_agenda(self, client: AsyncClient, team_id: str):
+        """P2: Should create a general meeting with agenda items."""
+        response = await client.post(
+            "/api/v1/meetings",
+            json={
+                "team_id": team_id,
+                "meeting_date": "2024-01-15",
+                "title": "분기 회고",
+                "meeting_type": "general",
+                "agenda_items": [
+                    {
+                        "title": "Q1 성과 리뷰",
+                        "description": "분기별 목표 달성률 검토",
+                        "presenter": "이상윤",
+                        "duration_minutes": 20,
+                    },
+                    {
+                        "title": "Q2 계획 논의",
+                        "description": "다음 분기 목표 설정",
+                        "duration_minutes": 30,
+                    },
+                ],
+            },
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["meeting_type"] == "general"
+        assert len(data["agenda_items"]) == 2
+        assert data["agenda_items"][0]["title"] == "Q1 성과 리뷰"
+        assert data["agenda_items"][0]["presenter"] == "이상윤"
+        assert data["agenda_items"][1]["presenter"] is None
+
+    @pytest.mark.asyncio
+    async def test_create_meeting_invalid_agenda_item(self, client: AsyncClient, team_id: str):
+        """P2: Should reject agenda items with invalid data."""
+        response = await client.post(
+            "/api/v1/meetings",
+            json={
+                "team_id": team_id,
+                "meeting_date": "2024-01-15",
+                "title": "회의",
+                "meeting_type": "general",
+                "agenda_items": [
+                    {
+                        "title": "",  # Empty title should fail
+                        "duration_minutes": 10,
+                    },
+                ],
+            },
         )
         assert response.status_code == 422
 
@@ -173,6 +280,7 @@ class TestGetMeetingProgress:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "created"
+        assert data["meeting_type"] == "weekly_report"
         assert data["has_recording"] is False
         assert data["has_weekly_report"] is False
         assert data["has_minutes"] is False
@@ -185,3 +293,67 @@ class TestGetMeetingProgress:
             "/api/v1/meetings/00000000-0000-0000-0000-000000000000/progress"
         )
         assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_get_progress_general_meeting(self, client: AsyncClient, team_id: str):
+        """P2: General meetings should skip weekly_report_loaded step."""
+        # Create general meeting
+        create_response = await client.post(
+            "/api/v1/meetings",
+            json={
+                "team_id": team_id,
+                "meeting_date": "2024-01-15",
+                "title": "일반회의",
+                "meeting_type": "general",
+            },
+        )
+        general_meeting_id = create_response.json()["id"]
+
+        response = await client.get(f"/api/v1/meetings/{general_meeting_id}/progress")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["meeting_type"] == "general"
+        # weekly_report_loaded should be True for general meetings (skipped)
+        assert data["steps"]["weekly_report_loaded"] is True
+
+    @pytest.mark.asyncio
+    async def test_get_progress_general_meeting_with_agenda(self, client: AsyncClient, team_id: str):
+        """P2: General meetings with agenda should show has_agenda_items."""
+        # Create general meeting with agenda
+        create_response = await client.post(
+            "/api/v1/meetings",
+            json={
+                "team_id": team_id,
+                "meeting_date": "2024-01-15",
+                "title": "회의",
+                "meeting_type": "general",
+                "agenda_items": [
+                    {"title": "안건1", "duration_minutes": 10},
+                ],
+            },
+        )
+        meeting_id = create_response.json()["id"]
+
+        response = await client.get(f"/api/v1/meetings/{meeting_id}/progress")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["has_agenda_items"] is True
+
+    @pytest.mark.asyncio
+    async def test_get_progress_general_meeting_without_agenda(self, client: AsyncClient, team_id: str):
+        """P2: General meetings without agenda should show has_agenda_items as False."""
+        create_response = await client.post(
+            "/api/v1/meetings",
+            json={
+                "team_id": team_id,
+                "meeting_date": "2024-01-15",
+                "title": "회의",
+                "meeting_type": "general",
+            },
+        )
+        meeting_id = create_response.json()["id"]
+
+        response = await client.get(f"/api/v1/meetings/{meeting_id}/progress")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["has_agenda_items"] is False

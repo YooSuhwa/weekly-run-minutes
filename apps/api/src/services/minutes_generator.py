@@ -128,6 +128,7 @@ class MinutesGeneratorService:
         meeting_date: str,
         team_name: str,
         attendees: list[str],
+        vocabulary_prompt: str | None = None,
     ) -> MinutesGenerationResult:
         """Generate meeting minutes from transcript and weekly report.
 
@@ -137,6 +138,7 @@ class MinutesGeneratorService:
             meeting_date: Meeting date in YYYY-MM-DD format
             team_name: Team name
             attendees: List of attendee names
+            vocabulary_prompt: Formatted vocabulary terms for AI correction
 
         Returns:
             MinutesGenerationResult with generated markdown
@@ -146,7 +148,13 @@ class MinutesGeneratorService:
             model=self.model,
             date=meeting_date,
             team=team_name,
+            has_vocabulary=vocabulary_prompt is not None,
         )
+
+        # Build vocabulary section if provided
+        vocabulary_section = ""
+        if vocabulary_prompt:
+            vocabulary_section = f"\n{vocabulary_prompt}\n"
 
         # Build user prompt with context
         user_prompt = f"""다음 정보를 기반으로 회의록을 작성해주세요.
@@ -155,7 +163,7 @@ class MinutesGeneratorService:
 - 날짜: {meeting_date}
 - 팀: {team_name}
 - 참석자: {", ".join(attendees)}
-
+{vocabulary_section}
 ## 주간업무록 (각 팀원의 업무 현황)
 {weekly_report_summary}
 
@@ -166,7 +174,7 @@ class MinutesGeneratorService:
 1. 각 팀원의 발표 내용과 주간업무록의 내용을 매칭하여 정리
 2. 업무 상태([완료], [진행], [예정])를 명확히 표시
 3. 주간업무록에 있지만 회의에서 언급되지 않은 항목은 "※ 언급되지 않음"으로 표시
-4. 녹취록의 비표준 용어를 주간업무록의 공식 용어로 교정
+4. 녹취록의 비표준 용어를 용어 사전의 공식 용어로 교정 (용어 사전이 제공된 경우)
 5. 마지막에 교정 목록을 JSON으로 첨부 (시스템 프롬프트의 형식 준수)
 """
 

@@ -14,8 +14,21 @@ import {
   usePublishMinutesToConfluenceApiV1MinutesMeetingsMeetingIdPublishPost,
   useUpdateMeetingMinutesApiV1MinutesMeetingsMeetingIdMinutesPut,
 } from "@/lib/api/__generated__/minutes/minutes";
+import { TrashPanel } from "@/components/meeting/trash-panel";
+import dynamic from "next/dynamic";
 import { CorrectionPanel } from "./correction-panel";
-import { MinutesEditor } from "./minutes-editor";
+
+const MinutesEditor = dynamic(
+  () => import("./minutes-editor").then((m) => ({ default: m.MinutesEditor })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="rounded-xl border border-border bg-card min-h-[500px] flex items-center justify-center">
+        <p className="text-sm text-muted-foreground">에디터 로딩 중...</p>
+      </div>
+    ),
+  },
+);
 
 export default function MinutesPage() {
   const params = useParams();
@@ -209,11 +222,12 @@ export default function MinutesPage() {
             activeCorrectionIndex={activeCorrectionIndex}
           />
         </div>
-        <div>
+        <div className="space-y-6">
           <CorrectionPanel
             corrections={minutes.corrections}
             onCorrectionClick={handleCorrectionClick}
           />
+          <TrashPanel meetingId={meetingId} />
         </div>
       </div>
     </div>

@@ -82,6 +82,64 @@ class TestGenerateMinutes:
         assert result.prompt_version == PROMPT_VERSION
 
     @pytest.mark.asyncio
+    async def test_with_vocabulary_prompt(self, minutes_service, mock_openai_response):
+        """Test that vocabulary prompt is included in the request."""
+        minutes_service.client.chat.completions.create = AsyncMock(
+            return_value=mock_openai_response
+        )
+
+        vocabulary_prompt = """## 용어 사전 (반드시 아래 용어로 교정)
+
+### 기술 용어
+- 에스디케이 → SDK
+- 지피티 → GPT"""
+
+        result = await minutes_service.generate_minutes(
+            transcript_text="이상윤: 에스디케이 배포 완료",
+            weekly_report_summary="이상윤: SDK 배포",
+            meeting_date="2024-01-15",
+            team_name="제품기술팀",
+            attendees=["이상윤"],
+            vocabulary_prompt=vocabulary_prompt,
+        )
+
+        assert isinstance(result, MinutesGenerationResult)
+        # Verify the API was called
+        minutes_service.client.chat.completions.create.assert_called_once()
+        # Get the actual call args
+        call_args = minutes_service.client.chat.completions.create.call_args
+        messages = call_args.kwargs["messages"]
+        user_message = messages[1]["content"]
+        # Verify vocabulary section was included
+        assert "용어 사전" in user_message
+        assert "에스디케이 → SDK" in user_message
+
+    @pytest.mark.asyncio
+    async def test_without_vocabulary_prompt(self, minutes_service, mock_openai_response):
+        """Test that vocabulary section is not included when not provided."""
+        minutes_service.client.chat.completions.create = AsyncMock(
+            return_value=mock_openai_response
+        )
+
+        result = await minutes_service.generate_minutes(
+            transcript_text="이상윤: 안녕하세요.",
+            weekly_report_summary="이상윤: 업무",
+            meeting_date="2024-01-15",
+            team_name="제품기술팀",
+            attendees=["이상윤"],
+            vocabulary_prompt=None,
+        )
+
+        assert isinstance(result, MinutesGenerationResult)
+        # Get the actual call args
+        call_args = minutes_service.client.chat.completions.create.call_args
+        messages = call_args.kwargs["messages"]
+        user_message = messages[1]["content"]
+        # Verify vocabulary section (with header "## 용어 사전") was NOT included
+        # Note: "용어 사전" may appear in instructions but the actual section starts with "## 용어 사전"
+        assert "## 용어 사전" not in user_message
+
+    @pytest.mark.asyncio
     async def test_empty_response_raises_error(self, minutes_service):
         mock_choice = MagicMock()
         mock_choice.message.content = ""

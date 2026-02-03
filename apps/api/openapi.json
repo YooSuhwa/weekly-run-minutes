@@ -54,7 +54,7 @@
           "teams"
         ],
         "summary": "List Teams",
-        "description": "List all teams.",
+        "description": "List all teams (names only, no passwords or sensitive data).",
         "operationId": "list_teams_api_v1_teams_get",
         "responses": {
           "200": {
@@ -78,7 +78,7 @@
           "teams"
         ],
         "summary": "Create Team",
-        "description": "Create a new team with optional members.",
+        "description": "Create a new team with optional password and members.",
         "operationId": "create_team_api_v1_teams_post",
         "requestBody": {
           "content": {
@@ -157,6 +157,58 @@
           }
         }
       },
+      "put": {
+        "tags": [
+          "teams"
+        ],
+        "summary": "Update Team",
+        "description": "Update a team.",
+        "operationId": "update_team_api_v1_teams__team_id__put",
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Team Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamWithMembers"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "teams"
@@ -179,6 +231,60 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{team_id}/auth": {
+      "post": {
+        "tags": [
+          "teams"
+        ],
+        "summary": "Authenticate Team",
+        "description": "Authenticate with team password. Returns team_id on success.",
+        "operationId": "authenticate_team_api_v1_teams__team_id__auth_post",
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Team Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamAuthRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamAuthResponse"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -465,13 +571,364 @@
         }
       }
     },
+    "/api/v1/teams/{team_id}/vocabulary": {
+      "get": {
+        "tags": [
+          "vocabulary"
+        ],
+        "summary": "List Vocabulary",
+        "description": "List all vocabulary terms for a team.\n\nOptionally filter by category or search text.",
+        "operationId": "list_vocabulary_api_v1_teams__team_id__vocabulary_get",
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Team Id"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/VocabularyCategory"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by category",
+              "title": "Category"
+            },
+            "description": "Filter by category"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search in term or correction",
+              "title": "Search"
+            },
+            "description": "Search in term or correction"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VocabularyResponse"
+                  },
+                  "title": "Response List Vocabulary Api V1 Teams  Team Id  Vocabulary Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "vocabulary"
+        ],
+        "summary": "Create Vocabulary",
+        "description": "Add a new vocabulary term for a team.",
+        "operationId": "create_vocabulary_api_v1_teams__team_id__vocabulary_post",
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Team Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VocabularyCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{team_id}/vocabulary/{vocabulary_id}": {
+      "get": {
+        "tags": [
+          "vocabulary"
+        ],
+        "summary": "Get Vocabulary",
+        "description": "Get a specific vocabulary term.",
+        "operationId": "get_vocabulary_api_v1_teams__team_id__vocabulary__vocabulary_id__get",
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Team Id"
+            }
+          },
+          {
+            "name": "vocabulary_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Vocabulary Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "vocabulary"
+        ],
+        "summary": "Update Vocabulary",
+        "description": "Update a vocabulary term.",
+        "operationId": "update_vocabulary_api_v1_teams__team_id__vocabulary__vocabulary_id__put",
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Team Id"
+            }
+          },
+          {
+            "name": "vocabulary_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Vocabulary Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VocabularyUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "vocabulary"
+        ],
+        "summary": "Delete Vocabulary",
+        "description": "Delete a vocabulary term.",
+        "operationId": "delete_vocabulary_api_v1_teams__team_id__vocabulary__vocabulary_id__delete",
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Team Id"
+            }
+          },
+          {
+            "name": "vocabulary_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Vocabulary Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{team_id}/vocabulary/import": {
+      "post": {
+        "tags": [
+          "vocabulary"
+        ],
+        "summary": "Bulk Import Vocabulary",
+        "description": "Bulk import vocabulary terms.\n\n- If skip_duplicates is True (default), existing terms are skipped.\n- If skip_duplicates is False, duplicate terms cause a 409 error.",
+        "operationId": "bulk_import_vocabulary_api_v1_teams__team_id__vocabulary_import_post",
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Team Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VocabularyBulkImport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyBulkImportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/meetings": {
       "get": {
         "tags": [
           "meetings"
         ],
         "summary": "List Meetings",
-        "description": "List meetings with optional filters.",
+        "description": "List meetings with optional filters.\n\nP2 Feature: Added meeting_type filter for WEEKLY_REPORT or GENERAL meetings.",
         "operationId": "list_meetings_api_v1_meetings_get",
         "parameters": [
           {
@@ -505,6 +962,22 @@
                 }
               ],
               "title": "Status"
+            }
+          },
+          {
+            "name": "meeting_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MeetingType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Meeting Type"
             }
           },
           {
@@ -574,7 +1047,7 @@
           "meetings"
         ],
         "summary": "Create Meeting",
-        "description": "Create a new meeting.",
+        "description": "Create a new meeting.\n\nP2 Feature: Supports meeting_type for WEEKLY_REPORT or GENERAL meetings.\nGENERAL meetings can have optional agenda_items.",
         "operationId": "create_meeting_api_v1_meetings_post",
         "requestBody": {
           "required": true,
@@ -749,7 +1222,7 @@
           "meetings"
         ],
         "summary": "Get Meeting Progress",
-        "description": "Get meeting processing progress for polling.",
+        "description": "Get meeting processing progress for polling.\n\nP2 Feature: For GENERAL meetings, weekly_report_loaded step is skipped.",
         "operationId": "get_meeting_progress_api_v1_meetings__meeting_id__progress_get",
         "parameters": [
           {
@@ -1148,7 +1621,7 @@
           "transcription"
         ],
         "summary": "Start Transcription",
-        "description": "Start transcription processing for a meeting.\n\nThis endpoint triggers STT processing in the background.\nUse GET /meetings/{meeting_id}/progress to poll for status.",
+        "description": "Start transcription processing for a meeting.\n\nThis endpoint triggers STT processing in the background.\nAfter STT, runs chat filtering to remove casual talk (can be disabled).\nUse GET /meetings/{meeting_id}/progress to poll for status.\n\nArgs:\n    meeting_id: Meeting UUID\n    request: Optional request body with enable_chat_filter flag",
         "operationId": "start_transcription_api_v1_transcription_meetings__meeting_id__transcribe_post",
         "parameters": [
           {
@@ -1162,6 +1635,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/TranscriptionRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
         "responses": {
           "202": {
             "description": "Successful Response",
@@ -1530,6 +2020,410 @@
         }
       }
     },
+    "/api/v1/filters/meetings/{meeting_id}/filtered": {
+      "get": {
+        "tags": [
+          "filters"
+        ],
+        "summary": "Get Filtered Content",
+        "description": "Get all filtered content for a meeting.\n\nArgs:\n    meeting_id: Meeting ID\n    include_restored: If True, include content that was restored (default: False)\n\nReturns:\n    List of filtered content items",
+        "operationId": "get_filtered_content_api_v1_filters_meetings__meeting_id__filtered_get",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meeting Id"
+            }
+          },
+          {
+            "name": "include_restored",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Restored"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilteredContentListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/filters/meetings/{meeting_id}/filtered/stats": {
+      "get": {
+        "tags": [
+          "filters"
+        ],
+        "summary": "Get Filter Stats",
+        "description": "Get statistics about filtered content for a meeting.",
+        "operationId": "get_filter_stats_api_v1_filters_meetings__meeting_id__filtered_stats_get",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilterStatsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/filters/meetings/{meeting_id}/filtered/restore-all": {
+      "post": {
+        "tags": [
+          "filters"
+        ],
+        "summary": "Restore All Filtered Content",
+        "description": "Restore all filtered content for a meeting.",
+        "operationId": "restore_all_filtered_content_api_v1_filters_meetings__meeting_id__filtered_restore_all_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Restore All Filtered Content Api V1 Filters Meetings  Meeting Id  Filtered Restore All Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/filters/meetings/{meeting_id}/filtered/confirm-all": {
+      "post": {
+        "tags": [
+          "filters"
+        ],
+        "summary": "Confirm All Filtered Content",
+        "description": "Confirm all non-restored filtered content as casual talk.",
+        "operationId": "confirm_all_filtered_content_api_v1_filters_meetings__meeting_id__filtered_confirm_all_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Confirm All Filtered Content Api V1 Filters Meetings  Meeting Id  Filtered Confirm All Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/filters/meetings/{meeting_id}/filtered/{content_id}": {
+      "get": {
+        "tags": [
+          "filters"
+        ],
+        "summary": "Get Filtered Content By Id",
+        "description": "Get a specific filtered content item.",
+        "operationId": "get_filtered_content_by_id_api_v1_filters_meetings__meeting_id__filtered__content_id__get",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meeting Id"
+            }
+          },
+          {
+            "name": "content_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Content Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilteredContentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/filters/meetings/{meeting_id}/filtered/{content_id}/restore": {
+      "post": {
+        "tags": [
+          "filters"
+        ],
+        "summary": "Restore Filtered Content",
+        "description": "Restore filtered content back to the transcript.\n\nThis marks the content as restored, indicating the user\ndisagrees with the AI's classification.",
+        "operationId": "restore_filtered_content_api_v1_filters_meetings__meeting_id__filtered__content_id__restore_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meeting Id"
+            }
+          },
+          {
+            "name": "content_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Content Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "filters"
+        ],
+        "summary": "Undo Restore",
+        "description": "Undo a restore action - mark content as filtered again.",
+        "operationId": "undo_restore_api_v1_filters_meetings__meeting_id__filtered__content_id__restore_delete",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meeting Id"
+            }
+          },
+          {
+            "name": "content_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Content Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/filters/meetings/{meeting_id}/filtered/{content_id}/confirm": {
+      "post": {
+        "tags": [
+          "filters"
+        ],
+        "summary": "Confirm Filtered Content",
+        "description": "Confirm that filtered content is indeed casual talk.\n\nThis is used for AI learning - confirmed items can be used\nto improve future filtering accuracy.",
+        "operationId": "confirm_filtered_content_api_v1_filters_meetings__meeting_id__filtered__content_id__confirm_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meeting Id"
+            }
+          },
+          {
+            "name": "content_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Content Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/realtime/meetings/{meeting_id}/start": {
       "post": {
         "tags": [
@@ -1872,6 +2766,59 @@
   },
   "components": {
     "schemas": {
+      "AgendaItem": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "presenter": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presenter"
+          },
+          "duration_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 480.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Minutes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "AgendaItem",
+        "description": "Schema for a single agenda item in general meetings."
+      },
       "Body_upload_recording_api_v1_recordings_meetings__meeting_id__recording_post": {
         "properties": {
           "file": {
@@ -1890,6 +2837,37 @@
           "file"
         ],
         "title": "Body_upload_recording_api_v1_recordings_meetings__meeting_id__recording_post"
+      },
+      "ConfirmResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "meeting_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Meeting Id"
+          },
+          "is_confirmed": {
+            "type": "boolean",
+            "title": "Is Confirmed"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "meeting_id",
+          "is_confirmed",
+          "message"
+        ],
+        "title": "ConfirmResponse",
+        "description": "Response after confirming content as casual talk."
       },
       "ConfluencePageSummary": {
         "properties": {
@@ -1972,6 +2950,201 @@
         "title": "CorrectionItemResponse",
         "description": "Single correction item."
       },
+      "FilterStatsResponse": {
+        "properties": {
+          "meeting_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Meeting Id"
+          },
+          "total_filtered": {
+            "type": "integer",
+            "title": "Total Filtered"
+          },
+          "by_reason": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "By Reason"
+          },
+          "restored_count": {
+            "type": "integer",
+            "title": "Restored Count"
+          },
+          "confirmed_count": {
+            "type": "integer",
+            "title": "Confirmed Count"
+          },
+          "average_confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Confidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "meeting_id",
+          "total_filtered",
+          "by_reason",
+          "restored_count",
+          "confirmed_count",
+          "average_confidence"
+        ],
+        "title": "FilterStatsResponse",
+        "description": "Statistics about filtered content for a meeting."
+      },
+      "FilteredContentListResponse": {
+        "properties": {
+          "meeting_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Meeting Id"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FilteredContentResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total_count": {
+            "type": "integer",
+            "title": "Total Count"
+          },
+          "restored_count": {
+            "type": "integer",
+            "title": "Restored Count"
+          },
+          "confirmed_count": {
+            "type": "integer",
+            "title": "Confirmed Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "meeting_id",
+          "items",
+          "total_count",
+          "restored_count",
+          "confirmed_count"
+        ],
+        "title": "FilteredContentListResponse",
+        "description": "List response for filtered contents."
+      },
+      "FilteredContentResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "meeting_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Meeting Id"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "filter_reason": {
+            "type": "string",
+            "title": "Filter Reason"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "is_restored": {
+            "type": "boolean",
+            "title": "Is Restored"
+          },
+          "is_confirmed": {
+            "type": "boolean",
+            "title": "Is Confirmed"
+          },
+          "speaker_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaker Label"
+          },
+          "speaker_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaker Name"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "meeting_id",
+          "content",
+          "filter_reason",
+          "confidence",
+          "is_restored",
+          "is_confirmed",
+          "speaker_label",
+          "speaker_name",
+          "start_time",
+          "end_time",
+          "created_at"
+        ],
+        "title": "FilteredContentResponse",
+        "description": "Filtered content response."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2038,6 +3211,24 @@
           "meeting_mode": {
             "$ref": "#/components/schemas/MeetingMode",
             "default": "upload"
+          },
+          "meeting_type": {
+            "$ref": "#/components/schemas/MeetingType",
+            "default": "weekly_report"
+          },
+          "agenda_items": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AgendaItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agenda Items"
           }
         },
         "type": "object",
@@ -2223,6 +3414,10 @@
             "type": "string",
             "title": "Meeting Mode"
           },
+          "meeting_type": {
+            "type": "string",
+            "title": "Meeting Type"
+          },
           "error_message": {
             "anyOf": [
               {
@@ -2255,6 +3450,20 @@
               }
             ],
             "title": "Confluence Page Url"
+          },
+          "agenda_items": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AgendaItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agenda Items"
           }
         },
         "type": "object",
@@ -2267,9 +3476,11 @@
           "title",
           "status",
           "meeting_mode",
+          "meeting_type",
           "error_message",
           "confluence_page_id",
-          "confluence_page_url"
+          "confluence_page_url",
+          "agenda_items"
         ],
         "title": "MeetingResponse",
         "description": "Schema for meeting response."
@@ -2343,6 +3554,15 @@
         "title": "MeetingStatusUpdate",
         "description": "Schema for updating meeting status."
       },
+      "MeetingType": {
+        "type": "string",
+        "enum": [
+          "weekly_report",
+          "general"
+        ],
+        "title": "MeetingType",
+        "description": "Meeting type enum - P2 feature."
+      },
       "MeetingWithDetails": {
         "properties": {
           "created_at": {
@@ -2381,6 +3601,10 @@
             "type": "string",
             "title": "Meeting Mode"
           },
+          "meeting_type": {
+            "type": "string",
+            "title": "Meeting Type"
+          },
           "error_message": {
             "anyOf": [
               {
@@ -2413,6 +3637,20 @@
               }
             ],
             "title": "Confluence Page Url"
+          },
+          "agenda_items": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AgendaItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agenda Items"
           },
           "recording": {
             "anyOf": [
@@ -2455,9 +3693,11 @@
           "title",
           "status",
           "meeting_mode",
+          "meeting_type",
           "error_message",
           "confluence_page_id",
           "confluence_page_url",
+          "agenda_items",
           "recording",
           "weekly_report",
           "minutes"
@@ -2697,6 +3937,37 @@
         "title": "RecordingResponse",
         "description": "Recording response model."
       },
+      "RestoreResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "meeting_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Meeting Id"
+          },
+          "is_restored": {
+            "type": "boolean",
+            "title": "Is Restored"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "meeting_id",
+          "is_restored",
+          "message"
+        ],
+        "title": "RestoreResponse",
+        "description": "Response after restoring filtered content."
+      },
       "ServiceStatus": {
         "properties": {
           "status": {
@@ -2737,6 +4008,41 @@
         "title": "ServiceStatus",
         "description": "Individual service health status."
       },
+      "TeamAuthRequest": {
+        "properties": {
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "password"
+        ],
+        "title": "TeamAuthRequest",
+        "description": "Schema for team authentication request."
+      },
+      "TeamAuthResponse": {
+        "properties": {
+          "team_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Team Id"
+          },
+          "team_name": {
+            "type": "string",
+            "title": "Team Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "team_id",
+          "team_name"
+        ],
+        "title": "TeamAuthResponse",
+        "description": "Schema for team authentication response."
+      },
       "TeamCreate": {
         "properties": {
           "name": {
@@ -2744,6 +4050,43 @@
             "maxLength": 100,
             "minLength": 1,
             "title": "Name"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 4
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "confluence_base_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confluence Base Url"
+          },
+          "confluence_space_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confluence Space Key"
           },
           "members": {
             "anyOf": [
@@ -2910,7 +4253,64 @@
           "name"
         ],
         "title": "TeamResponse",
-        "description": "Schema for team response."
+        "description": "Schema for team response (list view - no sensitive data)."
+      },
+      "TeamUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 4
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "confluence_base_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confluence Base Url"
+          },
+          "confluence_space_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confluence Space Key"
+          }
+        },
+        "type": "object",
+        "title": "TeamUpdate",
+        "description": "Schema for updating a team."
       },
       "TeamWithMembers": {
         "properties": {
@@ -2932,6 +4332,33 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "confluence_base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confluence Base Url"
+          },
+          "confluence_space_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confluence Space Key"
+          },
+          "has_password": {
+            "type": "boolean",
+            "title": "Has Password",
+            "default": false
           },
           "members": {
             "items": {
@@ -3018,6 +4445,18 @@
         "title": "TranscriptSegmentResponse",
         "description": "Transcript segment response."
       },
+      "TranscriptionRequest": {
+        "properties": {
+          "enable_chat_filter": {
+            "type": "boolean",
+            "title": "Enable Chat Filter",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "TranscriptionRequest",
+        "description": "Request body for transcription."
+      },
       "TranscriptionStatusResponse": {
         "properties": {
           "meeting_id": {
@@ -3099,6 +4538,212 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VocabularyBulkImport": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VocabularyBulkImportItem"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Items"
+          },
+          "skip_duplicates": {
+            "type": "boolean",
+            "title": "Skip Duplicates",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "VocabularyBulkImport",
+        "description": "Schema for bulk import request."
+      },
+      "VocabularyBulkImportItem": {
+        "properties": {
+          "term": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Term"
+          },
+          "correction": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Correction"
+          },
+          "category": {
+            "$ref": "#/components/schemas/VocabularyCategory",
+            "default": "terminology"
+          }
+        },
+        "type": "object",
+        "required": [
+          "term",
+          "correction"
+        ],
+        "title": "VocabularyBulkImportItem",
+        "description": "Schema for a single item in bulk import."
+      },
+      "VocabularyBulkImportResponse": {
+        "properties": {
+          "imported": {
+            "type": "integer",
+            "title": "Imported"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VocabularyResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "imported",
+          "skipped",
+          "items"
+        ],
+        "title": "VocabularyBulkImportResponse",
+        "description": "Schema for bulk import response."
+      },
+      "VocabularyCategory": {
+        "type": "string",
+        "enum": [
+          "terminology",
+          "abbreviation",
+          "name",
+          "other"
+        ],
+        "title": "VocabularyCategory",
+        "description": "Category of vocabulary term."
+      },
+      "VocabularyCreate": {
+        "properties": {
+          "term": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Term"
+          },
+          "correction": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Correction"
+          },
+          "category": {
+            "$ref": "#/components/schemas/VocabularyCategory",
+            "default": "terminology"
+          }
+        },
+        "type": "object",
+        "required": [
+          "term",
+          "correction"
+        ],
+        "title": "VocabularyCreate",
+        "description": "Schema for creating a vocabulary term."
+      },
+      "VocabularyResponse": {
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "team_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Team Id"
+          },
+          "term": {
+            "type": "string",
+            "title": "Term"
+          },
+          "correction": {
+            "type": "string",
+            "title": "Correction"
+          },
+          "category": {
+            "$ref": "#/components/schemas/VocabularyCategory"
+          }
+        },
+        "type": "object",
+        "required": [
+          "created_at",
+          "updated_at",
+          "id",
+          "team_id",
+          "term",
+          "correction",
+          "category"
+        ],
+        "title": "VocabularyResponse",
+        "description": "Schema for vocabulary response."
+      },
+      "VocabularyUpdate": {
+        "properties": {
+          "term": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Term"
+          },
+          "correction": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correction"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VocabularyCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "VocabularyUpdate",
+        "description": "Schema for updating a vocabulary term."
       },
       "WeeklyReportInfo": {
         "properties": {

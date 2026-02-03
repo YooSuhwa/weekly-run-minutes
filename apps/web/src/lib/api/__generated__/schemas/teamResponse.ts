@@ -7,7 +7,7 @@
  */
 
 /**
- * Schema for team response.
+ * Schema for team response (list view - no sensitive data).
  */
 export interface TeamResponse {
   created_at: string;

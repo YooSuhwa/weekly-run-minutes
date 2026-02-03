@@ -1,6 +1,17 @@
 "use client";
 
+import Image from "next/image";
 import { cn } from "@/lib/utils";
+import weekyThinking from "./Weeky-thinking.png";
+import weekyDone from "./Weeky-done.png";
+import weekySorry from "./Weeky-sorry.png";
+import weekyWave from "./Weeky-wave.png";
+import weekyListening from "./Weeky-listening.png";
+import weekyPointing from "./Weeky-pointing.png";
+import weekyTrophy from "./Weeky-trophy.png";
+import weekyTip from "./Weeky-tip.png";
+import weekyHappy from "./Weeky-happy.png";
+import weekyBye from "./Weeky-bye.png";
 
 export type WeekyExpression =
   | "thinking"
@@ -23,19 +34,19 @@ interface WeekyProps {
   message?: string;
 }
 
-const expressionEmoji: Record<WeekyExpression, string> = {
-  thinking: "\u{1F914}",
-  done: "\u{1F389}",
-  sorry: "\u{1F625}",
-  greeting: "\u{1F44B}",
-  listening: "\u{1F442}",
-  questioning: "\u{2753}",
-  celebrating: "\u{1F973}",
-  waiting: "\u{23F3}",
-  noting: "\u{1F4DD}",
-  next: "\u{27A1}\u{FE0F}",
-  encouragement: "\u{1F4AA}",
-  goodbye: "\u{1F44B}",
+const expressionImage: Record<WeekyExpression, typeof weekyThinking> = {
+  thinking: weekyThinking,
+  done: weekyDone,
+  sorry: weekySorry,
+  greeting: weekyWave,
+  listening: weekyListening,
+  questioning: weekyPointing,
+  celebrating: weekyTrophy,
+  waiting: weekyThinking,
+  noting: weekyTip,
+  next: weekyPointing,
+  encouragement: weekyHappy,
+  goodbye: weekyBye,
 };
 
 const expressionLabel: Record<WeekyExpression, string> = {
@@ -55,21 +66,25 @@ const expressionLabel: Record<WeekyExpression, string> = {
 
 const animatedExpressions = new Set<WeekyExpression>(["thinking", "waiting", "listening"]);
 
-const sizeClasses: Record<string, string> = {
-  sm: "text-3xl",
-  md: "text-5xl",
-  lg: "text-7xl",
+const sizeMap: Record<string, number> = {
+  sm: 48,
+  md: 80,
+  lg: 120,
 };
 
 export function Weeky({ expression, size = "md", className, message }: WeekyProps) {
+  const px = sizeMap[size];
+
   return (
     <div className={cn("flex flex-col items-center gap-2", className)}>
-      <div
-        className={cn(sizeClasses[size], animatedExpressions.has(expression) && "animate-pulse")}
-        role="img"
-        aria-label={`Weeky ${expression}`}
-      >
-        {expressionEmoji[expression]}
+      <div className={cn(animatedExpressions.has(expression) && "animate-pulse")}>
+        <Image
+          src={expressionImage[expression]}
+          alt={`Weeky ${expression}`}
+          width={px}
+          height={px}
+          placeholder="blur"
+        />
       </div>
       <p className="text-sm text-muted-foreground">{message ?? expressionLabel[expression]}</p>
     </div>

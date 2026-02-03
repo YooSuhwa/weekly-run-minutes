@@ -5,6 +5,7 @@
  * WeeklyRun - AI Meeting Orchestration API
  * OpenAPI spec version: 0.1.0
  */
+import type { AgendaItem } from './agendaItem';
 import type { MeetingStatus } from './meetingStatus';
 
 /**
@@ -19,7 +20,9 @@ export interface MeetingResponse {
   title: string;
   status: MeetingStatus;
   meeting_mode: string;
+  meeting_type: string;
   error_message: string | null;
   confluence_page_id: string | null;
   confluence_page_url: string | null;
+  agenda_items: AgendaItem[] | null;
 }

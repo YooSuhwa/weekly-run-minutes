@@ -29,6 +29,7 @@ import type {
   GetMeetingTranscriptTextApiV1TranscriptionMeetingsMeetingIdTranscriptsTextGetParams,
   HTTPValidationError,
   TranscriptSegmentResponse,
+  TranscriptionRequest,
   TranscriptionStatusResponse
 } from '.././schemas';
 
@@ -41,17 +42,25 @@ import { apiClient } from '../../client';
  * Start transcription processing for a meeting.
 
 This endpoint triggers STT processing in the background.
+After STT, runs chat filtering to remove casual talk (can be disabled).
 Use GET /meetings/{meeting_id}/progress to poll for status.
+
+Args:
+    meeting_id: Meeting UUID
+    request: Optional request body with enable_chat_filter flag
  * @summary Start Transcription
  */
 export const startTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost = (
     meetingId: string,
+    transcriptionRequestNull: TranscriptionRequest | null,
  signal?: AbortSignal
 ) => {
       
       
       return apiClient<TranscriptionStatusResponse>(
-      {url: `/api/v1/transcription/meetings/${meetingId}/transcribe`, method: 'POST', signal
+      {url: `/api/v1/transcription/meetings/${meetingId}/transcribe`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: transcriptionRequestNull, signal
     },
       );
     }
@@ -59,8 +68,8 @@ export const startTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost
 
 
 export const getStartTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePostMutationOptions = <TError = HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost>>, TError,{meetingId: string}, TContext>, }
-): UseMutationOptions<Awaited<ReturnType<typeof startTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost>>, TError,{meetingId: string}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost>>, TError,{meetingId: string;data: TranscriptionRequest | null}, TContext>, }
+): UseMutationOptions<Awaited<ReturnType<typeof startTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost>>, TError,{meetingId: string;data: TranscriptionRequest | null}, TContext> => {
 
 const mutationKey = ['startTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost'];
 const {mutation: mutationOptions} = options ?
@@ -72,10 +81,10 @@ const {mutation: mutationOptions} = options ?
       
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost>>, {meetingId: string}> = (props) => {
-          const {meetingId} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost>>, {meetingId: string;data: TranscriptionRequest | null}> = (props) => {
+          const {meetingId,data} = props ?? {};
 
-          return  startTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost(meetingId,)
+          return  startTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost(meetingId,data,)
         }
 
 
@@ -86,18 +95,18 @@ const {mutation: mutationOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type StartTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePostMutationResult = NonNullable<Awaited<ReturnType<typeof startTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost>>>
-    
+    export type StartTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePostMutationBody = TranscriptionRequest | null
     export type StartTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePostMutationError = HTTPValidationError
 
     /**
  * @summary Start Transcription
  */
 export const useStartTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost = <TError = HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost>>, TError,{meetingId: string}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost>>, TError,{meetingId: string;data: TranscriptionRequest | null}, TContext>, }
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof startTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost>>,
         TError,
-        {meetingId: string},
+        {meetingId: string;data: TranscriptionRequest | null},
         TContext
       > => {
       return useMutation(getStartTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePostMutationOptions(options), queryClient);

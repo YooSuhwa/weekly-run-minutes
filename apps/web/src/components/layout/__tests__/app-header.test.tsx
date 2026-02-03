@@ -12,7 +12,15 @@ vi.mock("next/navigation", () => ({
 
 // Mock next/link
 vi.mock("next/link", () => ({
-  default: ({ children, href, className }: { children: ReactNode; href: string; className?: string }) => (
+  default: ({
+    children,
+    href,
+    className,
+  }: {
+    children: ReactNode;
+    href: string;
+    className?: string;
+  }) => (
     <a href={href} className={className} data-testid={`nav-link-${href}`}>
       {children}
     </a>
@@ -194,7 +202,7 @@ describe("AppHeader", () => {
       const { container } = render(<AppHeader />);
       const nav = container.querySelector("nav");
       const links = nav?.querySelectorAll("a");
-      expect(links?.length).toBe(2); // 대시보드, 팀원 관리
+      expect(links?.length).toBe(3); // 대시보드, 팀원 관리, 설정
     });
 
     it("navigation links have text content", () => {

@@ -12,10 +12,12 @@ from sqlalchemy.orm import selectinload
 from src.lib.database import async_session_factory
 from src.lib.dependencies import get_db
 from src.lib.logging import get_logger
-from src.models import Meeting, MeetingMinutes, MeetingStatus, Transcript
+from src.models import Meeting, MeetingMinutes, MeetingStatus, MeetingType, Transcript
 from src.models.team import Team
 from src.services.confluence import ConfluenceError, ConfluenceService
+from src.services.general_meeting import AgendaItemData, GeneralMeetingService
 from src.services.minutes_generator import MinutesGenerationError, MinutesGeneratorService
+from src.services.vocabulary import VocabularyService
 from src.services.weekly_report_parser import WeeklyReportParser
 
 logger = get_logger(__name__)
@@ -75,7 +77,12 @@ class PublishResponse(BaseModel):
 
 
 async def generate_minutes_task(meeting_id: UUID) -> None:
-    """Background task to generate meeting minutes."""
+    """Background task to generate meeting minutes.
+
+    P2 Feature: Supports both WEEKLY_REPORT and GENERAL meeting types.
+    - WEEKLY_REPORT: Uses MinutesGeneratorService with weekly report structure
+    - GENERAL: Uses GeneralMeetingService with optional agenda items
+    """
     meeting = None
     async with async_session_factory() as db:
         try:
@@ -119,54 +126,125 @@ async def generate_minutes_task(meeting_id: UUID) -> None:
                 transcript_lines.append(f"[{speaker}] {t.text}")
             transcript_text = "\n".join(transcript_lines)
 
-            # Get weekly report summary
-            weekly_report_summary = ""
-            if meeting.weekly_report:
-                parser = WeeklyReportParser()
-                weekly_report_summary = parser.get_all_members_summary(
-                    meeting.weekly_report.parsed_data
-                )
-
             # Get attendees
             attendees = [m.name for m in meeting.team.members if m.is_active]
 
-            # Generate minutes
-            generator = MinutesGeneratorService()
-            result = await generator.generate_minutes(
-                transcript_text=transcript_text,
-                weekly_report_summary=weekly_report_summary,
-                meeting_date=meeting.meeting_date.isoformat(),
-                team_name=meeting.team.name,
-                attendees=attendees,
+            # Load team vocabulary for AI prompt context
+            vocab_service = VocabularyService()
+            vocabulary = await vocab_service.get_team_vocabulary(db, meeting.team.id)
+            vocabulary_prompt = (
+                vocab_service.format_vocabulary_for_prompt(vocabulary)
+                if vocabulary
+                else None
             )
 
-            # Store minutes with corrections (including position data)
-            minutes = MeetingMinutes(
-                meeting_id=meeting_id,
-                content_markdown=result.content_markdown,
-                ai_model=result.ai_model,
-                prompt_version=result.prompt_version,
-                corrections=[
-                    {
-                        "original": c.original,
-                        "corrected": c.corrected,
-                        "category": c.category,
-                        "paragraph_index": c.paragraph_index,
-                        "start_offset": c.start_offset,
-                        "end_offset": c.end_offset,
-                    }
-                    for c in result.corrections
-                ],
+            # Determine meeting type and generate accordingly
+            meeting_type_val = (
+                meeting.meeting_type.value
+                if isinstance(meeting.meeting_type, MeetingType)
+                else meeting.meeting_type
             )
-            db.add(minutes)
+
+            if meeting_type_val == MeetingType.GENERAL.value:
+                # P2: Generate general meeting minutes
+                general_generator = GeneralMeetingService()
+
+                # Parse agenda items if present
+                agenda_items = None
+                if meeting.agenda_items:
+                    agenda_items = [
+                        AgendaItemData(
+                            title=item.get("title", ""),
+                            description=item.get("description"),
+                            presenter=item.get("presenter"),
+                            duration_minutes=item.get("duration_minutes"),
+                        )
+                        for item in meeting.agenda_items
+                    ]
+
+                general_result = await general_generator.generate_minutes(
+                    transcript_text=transcript_text,
+                    meeting_date=meeting.meeting_date.isoformat(),
+                    meeting_title=meeting.title,
+                    team_name=meeting.team.name,
+                    attendees=attendees,
+                    agenda_items=agenda_items,
+                    vocabulary_prompt=vocabulary_prompt,
+                )
+
+                # Store minutes with corrections and metadata
+                minutes = MeetingMinutes(
+                    meeting_id=meeting_id,
+                    content_markdown=general_result.content_markdown,
+                    ai_model=general_result.ai_model,
+                    prompt_version=general_result.prompt_version,
+                    corrections=[
+                        {
+                            "original": c.original,
+                            "corrected": c.corrected,
+                            "category": c.category,
+                            "paragraph_index": c.paragraph_index,
+                            "start_offset": c.start_offset,
+                            "end_offset": c.end_offset,
+                        }
+                        for c in general_result.corrections
+                    ],
+                )
+                db.add(minutes)
+
+                logger.info(
+                    "General meeting minutes generated successfully",
+                    meeting_id=str(meeting_id),
+                    action_items_count=len(general_result.action_items),
+                    decisions_count=len(general_result.decisions),
+                )
+
+            else:
+                # Default: Generate weekly report-based minutes
+                weekly_report_summary = ""
+                if meeting.weekly_report:
+                    parser = WeeklyReportParser()
+                    weekly_report_summary = parser.get_all_members_summary(
+                        meeting.weekly_report.parsed_data
+                    )
+
+                weekly_generator = MinutesGeneratorService()
+                weekly_result = await weekly_generator.generate_minutes(
+                    transcript_text=transcript_text,
+                    weekly_report_summary=weekly_report_summary,
+                    meeting_date=meeting.meeting_date.isoformat(),
+                    team_name=meeting.team.name,
+                    attendees=attendees,
+                    vocabulary_prompt=vocabulary_prompt,
+                )
+
+                # Store minutes with corrections (including position data)
+                minutes = MeetingMinutes(
+                    meeting_id=meeting_id,
+                    content_markdown=weekly_result.content_markdown,
+                    ai_model=weekly_result.ai_model,
+                    prompt_version=weekly_result.prompt_version,
+                    corrections=[
+                        {
+                            "original": c.original,
+                            "corrected": c.corrected,
+                            "category": c.category,
+                            "paragraph_index": c.paragraph_index,
+                            "start_offset": c.start_offset,
+                            "end_offset": c.end_offset,
+                        }
+                        for c in weekly_result.corrections
+                    ],
+                )
+                db.add(minutes)
+
+                logger.info(
+                    "Weekly report minutes generated successfully",
+                    meeting_id=str(meeting_id),
+                )
 
             meeting.status = MeetingStatus.DRAFT_READY
             await db.commit()
-
-            logger.info(
-                "Minutes generated successfully",
-                meeting_id=str(meeting_id),
-            )
 
         except MinutesGenerationError as e:
             logger.exception("Minutes generation error", meeting_id=str(meeting_id))

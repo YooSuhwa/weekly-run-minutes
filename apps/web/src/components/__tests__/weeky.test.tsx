@@ -1,5 +1,21 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("next/image", () => ({
+  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} />,
+}));
+
+vi.mock("../weeky/Weeky-thinking.png", () => ({ default: "/weeky-thinking.png" }));
+vi.mock("../weeky/Weeky-done.png", () => ({ default: "/weeky-done.png" }));
+vi.mock("../weeky/Weeky-sorry.png", () => ({ default: "/weeky-sorry.png" }));
+vi.mock("../weeky/Weeky-wave.png", () => ({ default: "/weeky-wave.png" }));
+vi.mock("../weeky/Weeky-listening.png", () => ({ default: "/weeky-listening.png" }));
+vi.mock("../weeky/Weeky-pointing.png", () => ({ default: "/weeky-pointing.png" }));
+vi.mock("../weeky/Weeky-trophy.png", () => ({ default: "/weeky-trophy.png" }));
+vi.mock("../weeky/Weeky-tip.png", () => ({ default: "/weeky-tip.png" }));
+vi.mock("../weeky/Weeky-happy.png", () => ({ default: "/weeky-happy.png" }));
+vi.mock("../weeky/Weeky-bye.png", () => ({ default: "/weeky-bye.png" }));
+
 import { Weeky } from "../weeky/weeky";
 
 describe("Weeky", () => {
@@ -8,25 +24,21 @@ describe("Weeky", () => {
   });
 
   describe("expressions", () => {
-    afterEach(() => {
-      cleanup();
-    });
-
-    it("renders 'thinking' expression with correct aria-label", () => {
+    it("renders 'thinking' expression with correct alt text", () => {
       render(<Weeky expression="thinking" />);
-      const img = screen.getByRole("img", { name: "Weeky thinking" });
+      const img = screen.getByAltText("Weeky thinking");
       expect(img).toBeDefined();
     });
 
-    it("renders 'done' expression with correct aria-label", () => {
+    it("renders 'done' expression with correct alt text", () => {
       render(<Weeky expression="done" />);
-      const img = screen.getByRole("img", { name: "Weeky done" });
+      const img = screen.getByAltText("Weeky done");
       expect(img).toBeDefined();
     });
 
-    it("renders 'sorry' expression with correct aria-label", () => {
+    it("renders 'sorry' expression with correct alt text", () => {
       render(<Weeky expression="sorry" />);
-      const img = screen.getByRole("img", { name: "Weeky sorry" });
+      const img = screen.getByAltText("Weeky sorry");
       expect(img).toBeDefined();
     });
 
@@ -46,17 +58,13 @@ describe("Weeky", () => {
       for (const expr of expressions) {
         cleanup();
         render(<Weeky expression={expr} />);
-        const img = screen.getByRole("img", { name: `Weeky ${expr}` });
+        const img = screen.getByAltText(`Weeky ${expr}`);
         expect(img).toBeDefined();
       }
     });
   });
 
   describe("default messages", () => {
-    afterEach(() => {
-      cleanup();
-    });
-
     it("shows default thinking message", () => {
       render(<Weeky expression="thinking" />);
       expect(screen.getByText(/처리 중이에요/)).toBeDefined();
@@ -74,10 +82,6 @@ describe("Weeky", () => {
   });
 
   describe("custom message", () => {
-    afterEach(() => {
-      cleanup();
-    });
-
     it("shows custom message instead of default", () => {
       render(<Weeky expression="thinking" message="STT 변환 중..." />);
       expect(screen.getByText("STT 변환 중...")).toBeDefined();
@@ -86,62 +90,62 @@ describe("Weeky", () => {
   });
 
   describe("sizes", () => {
-    afterEach(() => {
-      cleanup();
-    });
-
-    it("applies sm size class", () => {
+    it("applies sm size (48px)", () => {
       render(<Weeky expression="done" size="sm" />);
-      const img = screen.getByRole("img");
-      expect(img.getAttribute("class")).toContain("text-3xl");
+      const img = screen.getByAltText("Weeky done");
+      expect(img.getAttribute("width")).toBe("48");
+      expect(img.getAttribute("height")).toBe("48");
     });
 
-    it("applies md size class by default", () => {
+    it("applies md size by default (80px)", () => {
       render(<Weeky expression="done" />);
-      const img = screen.getByRole("img");
-      expect(img.getAttribute("class")).toContain("text-5xl");
+      const img = screen.getByAltText("Weeky done");
+      expect(img.getAttribute("width")).toBe("80");
+      expect(img.getAttribute("height")).toBe("80");
     });
 
-    it("applies lg size class", () => {
+    it("applies lg size (120px)", () => {
       render(<Weeky expression="done" size="lg" />);
-      const img = screen.getByRole("img");
-      expect(img.getAttribute("class")).toContain("text-7xl");
+      const img = screen.getByAltText("Weeky done");
+      expect(img.getAttribute("width")).toBe("120");
+      expect(img.getAttribute("height")).toBe("120");
     });
   });
 
   describe("thinking animation", () => {
-    afterEach(() => {
-      cleanup();
-    });
-
     it("applies animate-pulse class for thinking expression", () => {
       render(<Weeky expression="thinking" />);
-      const img = screen.getByRole("img");
-      expect(img.getAttribute("class")).toContain("animate-pulse");
+      const img = screen.getByAltText("Weeky thinking");
+      const wrapper = img.parentElement as HTMLElement;
+      expect(wrapper.getAttribute("class")).toContain("animate-pulse");
     });
 
     it("does not apply animate-pulse for done expression", () => {
       render(<Weeky expression="done" />);
-      const img = screen.getByRole("img");
-      expect(img.getAttribute("class")).not.toContain("animate-pulse");
+      const img = screen.getByAltText("Weeky done");
+      const wrapper = img.parentElement as HTMLElement;
+      expect(wrapper.getAttribute("class")).not.toContain("animate-pulse");
     });
 
     it("does not apply animate-pulse for sorry expression", () => {
       render(<Weeky expression="sorry" />);
-      const img = screen.getByRole("img");
-      expect(img.getAttribute("class")).not.toContain("animate-pulse");
+      const img = screen.getByAltText("Weeky sorry");
+      const wrapper = img.parentElement as HTMLElement;
+      expect(wrapper.getAttribute("class")).not.toContain("animate-pulse");
     });
 
     it("applies animate-pulse for waiting expression", () => {
       render(<Weeky expression="waiting" />);
-      const img = screen.getByRole("img");
-      expect(img.getAttribute("class")).toContain("animate-pulse");
+      const img = screen.getByAltText("Weeky waiting");
+      const wrapper = img.parentElement as HTMLElement;
+      expect(wrapper.getAttribute("class")).toContain("animate-pulse");
     });
 
     it("applies animate-pulse for listening expression", () => {
       render(<Weeky expression="listening" />);
-      const img = screen.getByRole("img");
-      expect(img.getAttribute("class")).toContain("animate-pulse");
+      const img = screen.getByAltText("Weeky listening");
+      const wrapper = img.parentElement as HTMLElement;
+      expect(wrapper.getAttribute("class")).toContain("animate-pulse");
     });
 
     it("does not apply animate-pulse for non-animated expressions", () => {
@@ -149,17 +153,14 @@ describe("Weeky", () => {
       for (const expr of nonAnimated) {
         cleanup();
         render(<Weeky expression={expr} />);
-        const img = screen.getByRole("img");
-        expect(img.getAttribute("class")).not.toContain("animate-pulse");
+        const img = screen.getByAltText(`Weeky ${expr}`);
+        const wrapper = img.parentElement as HTMLElement;
+        expect(wrapper.getAttribute("class")).not.toContain("animate-pulse");
       }
     });
   });
 
   describe("custom className", () => {
-    afterEach(() => {
-      cleanup();
-    });
-
     it("applies custom className to wrapper", () => {
       const { container } = render(<Weeky expression="done" className="mt-4" />);
       const wrapper = container.firstChild as HTMLElement;

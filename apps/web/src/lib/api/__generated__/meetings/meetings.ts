@@ -41,6 +41,8 @@ import { apiClient } from '../../client';
 
 /**
  * List meetings with optional filters.
+
+P2 Feature: Added meeting_type filter for WEEKLY_REPORT or GENERAL meetings.
  * @summary List Meetings
  */
 export const listMeetingsApiV1MeetingsGet = (
@@ -133,6 +135,9 @@ export function useListMeetingsApiV1MeetingsGet<TData = Awaited<ReturnType<typeo
 
 /**
  * Create a new meeting.
+
+P2 Feature: Supports meeting_type for WEEKLY_REPORT or GENERAL meetings.
+GENERAL meetings can have optional agenda_items.
  * @summary Create Meeting
  */
 export const createMeetingApiV1MeetingsPost = (
@@ -415,6 +420,8 @@ export const useUpdateMeetingStatusApiV1MeetingsMeetingIdStatusPatch = <TError =
     }
     /**
  * Get meeting processing progress for polling.
+
+P2 Feature: For GENERAL meetings, weekly_report_loaded step is skipped.
  * @summary Get Meeting Progress
  */
 export const getMeetingProgressApiV1MeetingsMeetingIdProgressGet = (

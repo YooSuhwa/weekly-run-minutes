@@ -39,10 +39,6 @@
     }
   },
   "files": {
-    "includes": [
-      "src/**",
-      "!src/lib/api/__generated__/**",
-      "!src/**/*.css"
-    ]
+    "includes": ["src/**", "!src/lib/api/__generated__", "!src/**/*.css"]
   }
 }
