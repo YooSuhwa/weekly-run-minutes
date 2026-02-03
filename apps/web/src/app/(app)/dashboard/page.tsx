@@ -58,7 +58,12 @@ export default function DashboardPage() {
       ) : (
         <div className="grid gap-4">
           {meetings.map((meeting) => (
-            <MeetingCard key={meeting.id} meeting={meeting} />
+            <div
+              key={meeting.id}
+              style={{ contentVisibility: "auto", containIntrinsicSize: "0 120px" }}
+            >
+              <MeetingCard meeting={meeting} />
+            </div>
           ))}
         </div>
       )}
