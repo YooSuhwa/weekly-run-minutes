@@ -14,6 +14,8 @@ import {
   usePublishMinutesToConfluenceApiV1MinutesMeetingsMeetingIdPublishPost,
   useUpdateMeetingMinutesApiV1MinutesMeetingsMeetingIdMinutesPut,
 } from "@/lib/api/__generated__/minutes/minutes";
+import { useGetMeetingApiV1MeetingsMeetingIdGet } from "@/lib/api/__generated__/meetings/meetings";
+import { CelebrationModal } from "@/components/meeting/celebration-modal";
 import { TrashPanel } from "@/components/meeting/trash-panel";
 import dynamic from "next/dynamic";
 import { CorrectionPanel } from "./correction-panel";
@@ -37,9 +39,17 @@ export default function MinutesPage() {
   const [minutes, setMinutes] = useAtom(minutesAtom);
   const [confluence, setConfluence] = useAtom(confluenceAtom);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [showCelebration, setShowCelebration] = useState(false);
   const [activeCorrectionIndex, setActiveCorrectionIndex] = useState<number | null>(null);
   const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const updateMutateRef = useRef<typeof updateMinutes.mutate>(null);
+
+  // Fetch meeting data to check publish status
+  const { data: meetingData, refetch: refetchMeeting } =
+    useGetMeetingApiV1MeetingsMeetingIdGet(meetingId);
+
+  // Check if meeting is published (read-only mode)
+  const isPublished = Boolean(meetingData?.confluence_page_id);
 
   // Fetch minutes via generated hook
   const { data: minutesData, error: minutesError } =
@@ -69,6 +79,21 @@ export default function MinutesPage() {
       }));
     }
   }, [minutesData, minutesError, setMinutes]);
+
+  // Sync confluence status from meeting data (4번: 게시 상태 동기화)
+  useEffect(() => {
+    if (meetingData?.confluence_page_id) {
+      setConfluence((prev) => ({
+        ...prev,
+        publishStatus: "uploaded",
+        publishedPage: {
+          id: meetingData.confluence_page_id as string,
+          title: "",
+          url: meetingData.confluence_page_url as string,
+        },
+      }));
+    }
+  }, [meetingData, setConfluence]);
 
   // Update minutes mutation
   const updateMinutes = useUpdateMeetingMinutesApiV1MinutesMeetingsMeetingIdMinutesPut({
@@ -101,7 +126,10 @@ export default function MinutesPage() {
             url: data.confluence_page_url,
           },
         }));
-        toast.success("Confluence에 게시되었습니다!");
+        // 4번: 게시 후 meeting 데이터 refetch하여 상태 동기화
+        refetchMeeting();
+        // Show celebration modal
+        setShowCelebration(true);
       },
       onError: (error) => {
         const errorDetail = (error as { detail?: string })?.detail || "게시 실패";
@@ -118,9 +146,9 @@ export default function MinutesPage() {
     },
   });
 
-  // Auto-save every 30 seconds
+  // Auto-save every 30 seconds (6번: 게시 완료 시 자동 저장 비활성화)
   useEffect(() => {
-    if (!minutes.isEdited) return;
+    if (!minutes.isEdited || isPublished) return;
 
     if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
 
@@ -134,7 +162,7 @@ export default function MinutesPage() {
     return () => {
       if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
     };
-  }, [minutes.content, minutes.isEdited, meetingId]);
+  }, [minutes.content, minutes.isEdited, meetingId, isPublished]);
 
   const handleSaveDraft = useCallback(() => {
     setMinutes((prev) => ({ ...prev, saveStatus: "saving" }));
@@ -178,8 +206,14 @@ export default function MinutesPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
+    <>
+      <CelebrationModal
+        isOpen={showCelebration}
+        confluenceUrl={confluence.publishedPage?.url}
+        onClose={() => setShowCelebration(false)}
+      />
+      <div className="mx-auto max-w-6xl px-4 py-8">
+        <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Weeky expression="done" size="sm" />
           <div>
@@ -194,7 +228,8 @@ export default function MinutesPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleSaveDraft}>
+          {/* 6번: 게시 완료 시 저장 버튼 비활성화 */}
+          <Button variant="outline" size="sm" onClick={handleSaveDraft} disabled={isPublished}>
             <FileText className="h-4 w-4" />
             저장
           </Button>
@@ -205,22 +240,29 @@ export default function MinutesPage() {
           <Button
             size="sm"
             onClick={handlePublish}
-            disabled={isPublishing || confluence.publishStatus === "uploaded"}
+            disabled={isPublishing || isPublished}
           >
             <Send className="h-4 w-4" />
-            {confluence.publishStatus === "uploaded" ? "게시 완료" : "Confluence 게시"}
+            {isPublished ? "게시 완료" : "Confluence 게시"}
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
+          {/* 6번: 게시 완료 시 에디터 읽기 전용 */}
           <MinutesEditor
             content={minutes.content}
             onChange={handleContentChange}
             corrections={minutes.corrections}
             activeCorrectionIndex={activeCorrectionIndex}
+            readOnly={isPublished}
           />
+          {isPublished && (
+            <p className="mt-2 text-sm text-muted-foreground text-center">
+              게시 완료된 회의록은 수정할 수 없습니다.
+            </p>
+          )}
         </div>
         <div className="space-y-6">
           <CorrectionPanel
@@ -230,7 +272,8 @@ export default function MinutesPage() {
           <TrashPanel meetingId={meetingId} />
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 

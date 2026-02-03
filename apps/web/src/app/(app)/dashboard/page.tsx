@@ -1,14 +1,25 @@
 "use client";
 
+import { useAtomValue } from "jotai";
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { selectedTeamIdAtom } from "@/atoms/team";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Weeky } from "@/components/weeky/weeky";
 import { useListMeetingsApiV1MeetingsGet } from "@/lib/api/__generated__/meetings/meetings";
 import { MeetingCard } from "./meeting-card";
 
 export default function DashboardPage() {
-  const { data: meetings = [], isLoading, error } = useListMeetingsApiV1MeetingsGet();
+  const selectedTeamId = useAtomValue(selectedTeamIdAtom);
+
+  const {
+    data: meetings = [],
+    isLoading,
+    error,
+  } = useListMeetingsApiV1MeetingsGet(
+    selectedTeamId ? { team_id: selectedTeamId } : undefined,
+  );
 
   if (isLoading) {
     return (
@@ -33,9 +44,14 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">대시보드</h1>
-          <p className="text-sm text-muted-foreground">최근 회의 목록</p>
+        <div className="flex items-center gap-4">
+          <Weeky expression="greeting" size="md" />
+          <div>
+            <h1 className="text-2xl font-bold">대시보드</h1>
+            <p className="text-sm text-muted-foreground">
+              안녕하세요! 이번 주 잘 지내고 있나요?
+            </p>
+          </div>
         </div>
         <Link href="/meetings/new">
           <Button>

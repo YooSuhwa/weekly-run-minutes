@@ -1,9 +1,26 @@
 "use client";
 
-import { useAtom } from "jotai";
+import {
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useAtom, useAtomValue } from "jotai";
 import { GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { type TeamMember, teamMembersAtom } from "@/atoms/team";
+import { selectedTeamIdAtom, type TeamMember, teamMembersAtom } from "@/atoms/team";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
@@ -15,17 +32,107 @@ import {
   useUpdateTeamMemberApiV1TeamsTeamIdMembersMemberIdPatch,
 } from "@/lib/api/__generated__/teams/teams";
 
+interface SortableMemberItemProps {
+  member: TeamMember;
+  editingId: string | null;
+  editName: string;
+  onEditNameChange: (name: string) => void;
+  onEdit: (member: TeamMember) => void;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
+  onDelete: (id: string) => void;
+}
+
+function SortableMemberItem({
+  member,
+  editingId,
+  editName,
+  onEditNameChange,
+  onEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onDelete,
+}: SortableMemberItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: member.id,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-3 rounded-lg border border-border bg-card p-3 ${
+        isDragging ? "opacity-50 shadow-lg" : ""
+      }`}
+    >
+      <button
+        type="button"
+        className="cursor-grab touch-none text-muted-foreground hover:text-foreground focus:outline-none active:cursor-grabbing"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+        {member.presentationOrder}
+      </span>
+
+      {editingId === member.id ? (
+        <div className="flex flex-1 items-center gap-2">
+          <input
+            type="text"
+            value={editName}
+            onChange={(e) => onEditNameChange(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && onSaveEdit()}
+            className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <Button size="sm" variant="ghost" onClick={onSaveEdit}>
+            저장
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onCancelEdit}>
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      ) : (
+        <>
+          <span className="flex-1 text-sm font-medium">{member.name}</span>
+          <Button size="icon" variant="ghost" onClick={() => onEdit(member)}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" onClick={() => onDelete(member.id)}>
+            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function TeamPage() {
   const toast = useToast();
+  const selectedTeamId = useAtomValue(selectedTeamIdAtom);
   const [members, setMembers] = useAtom(teamMembersAtom);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState("");
 
-  // Fetch teams list
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  // Fetch teams list as fallback
   const { data: teams } = useListTeamsApiV1TeamsGet();
-  const teamId = teams?.[0]?.id ?? "";
+  const teamId = selectedTeamId ?? teams?.[0]?.id ?? "";
 
   // Fetch team details with members
   const { data: teamData } = useGetTeamApiV1TeamsTeamIdGet(teamId, {
@@ -174,12 +281,58 @@ export default function TeamPage() {
     }
   };
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const sortedMembers = [...members].sort((a, b) => a.presentationOrder - b.presentationOrder);
+      const oldIndex = sortedMembers.findIndex((m) => m.id === active.id);
+      const newIndex = sortedMembers.findIndex((m) => m.id === over.id);
+
+      const reordered = arrayMove(sortedMembers, oldIndex, newIndex);
+
+      // Update presentation order for all items
+      const updatedMembers = reordered.map((member, index) => ({
+        ...member,
+        presentationOrder: index + 1,
+      }));
+
+      setMembers(updatedMembers);
+
+      // Update order on server for each changed member
+      if (teamId) {
+        for (const member of updatedMembers) {
+          const original = members.find((m) => m.id === member.id);
+          if (original && original.presentationOrder !== member.presentationOrder) {
+            updateMember.mutate({
+              teamId,
+              memberId: member.id,
+              data: { presentation_order: member.presentationOrder },
+            });
+          }
+        }
+      }
+
+      toast.success("순서가 변경되었습니다");
+    }
+  };
+
+  if (!teamId) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-8">
+        <div className="text-center text-muted-foreground">팀을 선택해주세요.</div>
+      </div>
+    );
+  }
+
+  const sortedMembers = [...members].sort((a, b) => a.presentationOrder - b.presentationOrder);
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">팀원 관리</h1>
-          <p className="text-sm text-muted-foreground">제품기술팀 팀원 목록</p>
+          <p className="text-sm text-muted-foreground">{teamData?.name ?? "팀"} 팀원 목록</p>
         </div>
         <Button onClick={() => setIsAdding(true)} disabled={isAdding}>
           <Plus className="h-4 w-4" />
@@ -190,50 +343,34 @@ export default function TeamPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">발표 순서</CardTitle>
+          <p className="text-xs text-muted-foreground">드래그하여 순서를 변경하세요</p>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            {members
-              .sort((a, b) => a.presentationOrder - b.presentationOrder)
-              .map((member) => (
-                <div
-                  key={member.id}
-                  className="flex items-center gap-3 rounded-lg border border-border p-3"
-                >
-                  <GripVertical className="h-4 w-4 cursor-grab text-muted-foreground" />
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                    {member.presentationOrder}
-                  </span>
-
-                  {editingId === member.id ? (
-                    <div className="flex flex-1 items-center gap-2">
-                      <input
-                        type="text"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleSaveEdit()}
-                        className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                      />
-                      <Button size="sm" variant="ghost" onClick={handleSaveEdit}>
-                        저장
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <>
-                      <span className="flex-1 text-sm font-medium">{member.name}</span>
-                      <Button size="icon" variant="ghost" onClick={() => handleEdit(member)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button size="icon" variant="ghost" onClick={() => handleDelete(member.id)}>
-                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                      </Button>
-                    </>
-                  )}
-                </div>
-              ))}
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={sortedMembers.map((m) => m.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {sortedMembers.map((member) => (
+                  <SortableMemberItem
+                    key={member.id}
+                    member={member}
+                    editingId={editingId}
+                    editName={editName}
+                    onEditNameChange={setEditName}
+                    onEdit={handleEdit}
+                    onSaveEdit={handleSaveEdit}
+                    onCancelEdit={() => setEditingId(null)}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
 
             {isAdding && (
               <div className="flex items-center gap-3 rounded-lg border border-dashed border-primary p-3">
