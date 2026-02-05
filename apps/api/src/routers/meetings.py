@@ -83,15 +83,14 @@ async def create_meeting(
     # Default meeting_date to today if not provided
     meeting_date = data.meeting_date or date.today()
 
-    # Generate default title if not provided
+    # Generate default title if not provided (date is added only in Confluence title)
     if data.title:
         title = data.title
     else:
-        date_str = format_date_for_title(meeting_date)
         if data.meeting_type == MeetingType.WEEKLY_REPORT:
-            title = f"주간회의 ({date_str})"
+            title = "주간회의"
         else:
-            title = f"일반회의 ({date_str})"
+            title = "일반회의"
 
     meeting = Meeting(
         team_id=data.team_id,
@@ -102,6 +101,9 @@ async def create_meeting(
         meeting_mode=data.meeting_mode,
         meeting_type=data.meeting_type,
         agenda_items=agenda_items_data,
+        context_terms=data.context_terms,
+        context_instructions=data.context_instructions,
+        attendees=data.attendees,
     )
     db.add(meeting)
     await db.commit()

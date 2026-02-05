@@ -59,6 +59,7 @@ class VocabularyService:
         """Format vocabulary terms for inclusion in AI prompt.
 
         Groups terms by category for better context.
+        Presents terms as "important words to recognize correctly".
 
         Args:
             vocabulary: List of vocabulary terms
@@ -76,7 +77,11 @@ class VocabularyService:
                 by_category[term.category] = []
             by_category[term.category].append(term)
 
-        lines = ["## 용어 사전 (반드시 아래 용어로 교정)"]
+        lines = [
+            "## 용어 사전",
+            "아래 용어들은 정확하게 인식해야 하는 중요한 단어입니다.",
+            "비슷하게 들리는 발음이 있더라도 반드시 아래 표기로 사용하세요.",
+        ]
 
         category_names = {
             VocabularyCategory.TERMINOLOGY: "기술 용어",
@@ -90,7 +95,11 @@ class VocabularyService:
             if terms:
                 lines.append(f"\n### {category_names.get(category, category)}")
                 for term in terms:
-                    lines.append(f"- {term.term} → {term.correction}")
+                    # If correction differs from term, show hint
+                    if term.correction != term.term:
+                        lines.append(f"- **{term.term}** (발음 힌트: {term.correction})")
+                    else:
+                        lines.append(f"- **{term.term}**")
 
         return "\n".join(lines)
 
@@ -98,11 +107,11 @@ class VocabularyService:
         self,
         text: str,
         vocabulary: list[VocabularyTerm],
-    ) -> tuple[str, list[dict[str, str | int]]]:
+    ) -> tuple[str, list[dict[str, str]]]:
         """Apply vocabulary corrections to text.
 
-        This is a simple string replacement that can be used for
-        pre-processing or validation.
+        Replaces pronunciation hints (correction) with correct terms (term).
+        Supports multiple hints separated by comma (e.g., "피디야,피디얌,피디아이").
 
         Args:
             text: Text to correct
@@ -113,23 +122,35 @@ class VocabularyService:
         """
         corrections_made = []
 
-        for term in vocabulary:
-            if term.term in text:
-                count = text.count(term.term)
-                text = text.replace(term.term, term.correction)
-                corrections_made.append(
-                    {
-                        "original": term.term,
-                        "corrected": term.correction,
-                        "category": str(term.category.value),
-                        "count": count,
-                    }
-                )
-                logger.debug(
-                    "Applied vocabulary correction",
-                    term=term.term,
-                    correction=term.correction,
-                    count=count,
-                )
+        for vocab in vocabulary:
+            # Skip if correction equals term (no hint)
+            if vocab.correction == vocab.term:
+                continue
+
+            # Split by comma to support multiple hints
+            hints = [h.strip() for h in vocab.correction.split(",") if h.strip()]
+
+            for hint in hints:
+                # Skip if hint equals term
+                if hint == vocab.term:
+                    continue
+
+                if hint in text:
+                    count = text.count(hint)
+                    text = text.replace(hint, vocab.term)
+                    corrections_made.append(
+                        {
+                            "original": hint,
+                            "corrected": vocab.term,
+                            "category": str(vocab.category.value),
+                            "count": str(count),
+                        }
+                    )
+                    logger.debug(
+                        "Applied vocabulary correction",
+                        original=hint,
+                        corrected=vocab.term,
+                        count=count,
+                    )
 
         return text, corrections_made

@@ -29,7 +29,7 @@ function ToastItem({ toast, onDismiss }: { toast: ToastType; onDismiss: () => vo
   return (
     <div
       className={cn(
-        "flex items-center gap-3 rounded-lg border px-4 py-3 shadow-md animate-in slide-in-from-top-2",
+        "flex items-center gap-3 rounded-lg border px-4 py-3 shadow-md animate-in slide-in-from-bottom-2",
         bgClasses[toast.type],
       )}
     >
@@ -56,7 +56,7 @@ export function ToastContainer() {
   if (ui.toasts.length === 0) return null;
 
   return (
-    <div className="fixed right-4 top-4 z-50 flex w-80 flex-col gap-2">
+    <div className="fixed bottom-4 left-1/2 z-50 flex w-80 -translate-x-1/2 flex-col gap-2">
       {ui.toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} onDismiss={() => dismiss(toast.id)} />
       ))}

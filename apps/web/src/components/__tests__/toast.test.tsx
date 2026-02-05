@@ -164,14 +164,15 @@ describe("ToastContainer", () => {
   });
 
   describe("container positioning", () => {
-    it("renders container with fixed position classes", () => {
+    it("renders container with fixed position classes at bottom center", () => {
       const { container } = renderWithProviders(<ToastContainer />, [
         { id: "1", type: "success", message: "Test" },
       ]);
       const toastContainer = container.firstChild as HTMLElement;
       expect(toastContainer.getAttribute("class")).toContain("fixed");
-      expect(toastContainer.getAttribute("class")).toContain("right-4");
-      expect(toastContainer.getAttribute("class")).toContain("top-4");
+      expect(toastContainer.getAttribute("class")).toContain("bottom-4");
+      expect(toastContainer.getAttribute("class")).toContain("left-1/2");
+      expect(toastContainer.getAttribute("class")).toContain("-translate-x-1/2");
       expect(toastContainer.getAttribute("class")).toContain("z-50");
     });
   });

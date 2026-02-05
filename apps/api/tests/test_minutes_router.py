@@ -1092,7 +1092,6 @@ class TestGeneralMeetingMinutesGeneration:
         self, client: AsyncClient, db_session
     ):
         """P2: Should update meeting title from AI suggested_title for general meetings."""
-        from datetime import date
 
         # Create team with members
         team_response = await client.post("/api/v1/teams", json={"name": "제목테스트팀"})
@@ -1110,13 +1109,13 @@ class TestGeneralMeetingMinutesGeneration:
                 "team_id": team_id,
                 "meeting_date": "2025-01-15",
                 "meeting_type": "general",
-                # title not provided - should be auto-generated as "일반회의 (25/1/15)"
+                # title not provided - should be auto-generated as "일반회의"
             },
         )
         meeting_id = UUID(meeting_response.json()["id"])
 
-        # Verify initial title is auto-generated
-        assert meeting_response.json()["title"] == "일반회의 (25/1/15)"
+        # Verify initial title is auto-generated (date is added only in Confluence title)
+        assert meeting_response.json()["title"] == "일반회의"
 
         await client.patch(
             f"/api/v1/meetings/{str(meeting_id)}/status",
@@ -1161,12 +1160,12 @@ class TestGeneralMeetingMinutesGeneration:
 
             await generate_minutes_task(meeting_id)
 
-        # Verify title was updated
+        # Verify title was updated (AI suggested title used as-is, date added only in Confluence)
         result = await db_session.execute(
             select(Meeting).where(Meeting.id == meeting_id)
         )
         meeting = result.scalar_one()
-        assert meeting.title == "프로젝트 킥오프 (25/1/15)"
+        assert meeting.title == "프로젝트 킥오프"
         assert meeting.status == MeetingStatus.DRAFT_READY
 
     @pytest.mark.asyncio

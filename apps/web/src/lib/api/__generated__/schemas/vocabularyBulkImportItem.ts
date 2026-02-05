@@ -12,14 +12,12 @@ import type { VocabularyCategory } from './vocabularyCategory';
  */
 export interface VocabularyBulkImportItem {
   /**
+   * 올바른 용어
    * @minLength 1
    * @maxLength 200
    */
   term: string;
-  /**
-   * @minLength 1
-   * @maxLength 200
-   */
-  correction: string;
+  /** 발음 힌트 (선택) */
+  correction?: string | null;
   category?: VocabularyCategory;
 }

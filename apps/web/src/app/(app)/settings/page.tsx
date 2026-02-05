@@ -37,10 +37,8 @@ import type {
   VocabularyResponse,
 } from "@/lib/api/__generated__/schemas";
 import {
-  useCreateTeamApiV1TeamsPost,
   useDeleteTeamApiV1TeamsTeamIdDelete,
   useGetTeamApiV1TeamsTeamIdGet,
-  useListTeamsApiV1TeamsGet,
   useUpdateTeamApiV1TeamsTeamIdPut,
 } from "@/lib/api/__generated__/teams/teams";
 import {
@@ -106,16 +104,10 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [newTeamName, setNewTeamName] = useState("");
-  const [newTeamPassword, setNewTeamPassword] = useState("");
+  const [showEditNameDialog, setShowEditNameDialog] = useState(false);
+  const [editedTeamName, setEditedTeamName] = useState("");
 
   // Get team ID from atom (no fallback - team selection is required)
-  const {
-    data: teams,
-    isLoading: isLoadingTeams,
-    refetch: refetchTeams,
-  } = useListTeamsApiV1TeamsGet();
   const teamId = selectedTeamId ?? "";
 
   // Fetch team details to sync settings
@@ -136,28 +128,10 @@ export default function SettingsPage() {
     },
   });
 
-  // Create team mutation
-  const createTeam = useCreateTeamApiV1TeamsPost({
-    mutation: {
-      onSuccess: (data) => {
-        refetchTeams();
-        setShowCreateDialog(false);
-        setNewTeamName("");
-        setNewTeamPassword("");
-        setSelectedTeamId(data.id);
-        toast.success(`${data.name} 팀이 생성되었습니다`);
-      },
-      onError: () => {
-        toast.error("팀 생성에 실패했습니다");
-      },
-    },
-  });
-
   // Delete team mutation
   const deleteTeam = useDeleteTeamApiV1TeamsTeamIdDelete({
     mutation: {
       onSuccess: () => {
-        refetchTeams();
         setShowDeleteDialog(false);
         setSelectedTeamId(null);
         toast.success("팀이 삭제되었습니다");
@@ -257,12 +231,12 @@ export default function SettingsPage() {
 
   // Handlers
   const handleAdd = useCallback(() => {
-    if (!teamId || !formData.term.trim() || !formData.correction.trim()) return;
+    if (!teamId || !formData.term.trim()) return;
     createVocabulary.mutate({
       teamId,
       data: {
         term: formData.term.trim(),
-        correction: formData.correction.trim(),
+        correction: formData.correction.trim() || undefined, // Optional - defaults to term on backend
         category: formData.category,
       },
     });
@@ -278,13 +252,13 @@ export default function SettingsPage() {
   }, []);
 
   const handleSaveEdit = useCallback(() => {
-    if (!teamId || !editingId || !formData.term.trim() || !formData.correction.trim()) return;
+    if (!teamId || !editingId || !formData.term.trim()) return;
     updateVocabulary.mutate({
       teamId,
       vocabularyId: editingId,
       data: {
         term: formData.term.trim(),
-        correction: formData.correction.trim(),
+        correction: formData.correction.trim() || formData.term.trim(), // Default to term if empty
         category: formData.category,
       },
     });
@@ -307,17 +281,23 @@ export default function SettingsPage() {
 
     for (const line of lines) {
       const parts = line.split(",").map((p) => p.trim());
-      if (parts.length >= 2) {
+      if (parts.length >= 1 && parts[0]) {
         const [term, correction, categoryStr] = parts;
         const category = CATEGORY_OPTIONS.includes(categoryStr as VocabularyCategory)
           ? (categoryStr as VocabularyCategory)
-          : "other";
-        items.push({ term, correction, category });
+          : "terminology";
+        // correction is optional - if empty or same as term, backend will handle
+        // Convert | to , for multiple hints (since CSV uses , as delimiter)
+        items.push({
+          term,
+          correction: correction?.replace(/\|/g, ",") || undefined,
+          category,
+        });
       }
     }
 
     if (items.length === 0) {
-      toast.error("유효한 데이터가 없습니다. 형식: 용어,교정어,카테고리");
+      toast.error("유효한 데이터가 없습니다. 형식: 용어,발음힌트,카테고리");
       return;
     }
 
@@ -449,9 +429,22 @@ export default function SettingsPage() {
               <CardDescription>팀 이름 및 비밀번호를 관리합니다</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <span className="mb-1 block text-sm font-medium">팀 이름</span>
-                <p className="text-lg font-semibold">{teamData?.name ?? "-"}</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="mb-1 block text-sm font-medium">팀 이름</span>
+                  <p className="text-lg font-semibold">{teamData?.name ?? "-"}</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setEditedTeamName(teamData?.name ?? "");
+                    setShowEditNameDialog(true);
+                  }}
+                >
+                  <Pencil className="mr-2 h-4 w-4" />
+                  이름 변경
+                </Button>
               </div>
 
               <div className="flex items-center justify-between">
@@ -478,62 +471,6 @@ export default function SettingsPage() {
                   <Trash2 className="mr-2 h-4 w-4" />팀 삭제
                 </Button>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Create New Team */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">새 팀 만들기</CardTitle>
-              <CardDescription>새로운 팀을 생성합니다</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button onClick={() => setShowCreateDialog(true)}>
-                <Plus className="mr-2 h-4 w-4" />새 팀 만들기
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Team List */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">모든 팀</CardTitle>
-              <CardDescription>등록된 모든 팀 목록</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isLoadingTeams ? (
-                <p className="py-4 text-center text-muted-foreground">로딩 중...</p>
-              ) : teams && teams.length > 0 ? (
-                <div className="divide-y divide-border rounded-lg border">
-                  {teams.map((team) => (
-                    <button
-                      type="button"
-                      key={team.id}
-                      onClick={() => setSelectedTeamId(team.id)}
-                      className={`flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-muted/50 ${
-                        team.id === selectedTeamId ? "bg-muted/30" : ""
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Users className="h-5 w-5 text-muted-foreground" />
-                        <span className={team.id === selectedTeamId ? "font-medium" : ""}>
-                          {team.name}
-                        </span>
-                        {team.id === selectedTeamId && (
-                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                            선택됨
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-sm text-muted-foreground">
-                        {new Date(team.created_at).toLocaleDateString("ko-KR")}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p className="py-4 text-center text-muted-foreground">등록된 팀이 없습니다</p>
-              )}
             </CardContent>
           </Card>
         </div>
@@ -595,7 +532,9 @@ export default function SettingsPage() {
               <CardHeader>
                 <CardTitle className="text-base">일괄 가져오기</CardTitle>
                 <CardDescription>
-                  CSV 형식으로 용어를 입력하세요. 각 줄: 용어,교정어,카테고리
+                  CSV 형식으로 용어를 입력하세요. 각 줄: 용어,발음힌트,카테고리
+                  <br />
+                  <span className="text-xs">여러 힌트는 | 로 구분 (예: 피디야|피디얌)</span>
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -603,9 +542,9 @@ export default function SettingsPage() {
                   value={bulkImportText}
                   onChange={(e) => setBulkImportText(e.target.value)}
                   placeholder="예시:
-AI,에이아이,abbreviation
-SDK,에스디케이,abbreviation
-이상윤,이상윤,name"
+피디아,피디야|피디얌,terminology
+클로드,클라우드,terminology
+이상윤,,name"
                   className="h-32 w-full rounded-lg border border-input bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 />
                 <div className="mt-4 flex justify-end gap-2">
@@ -634,20 +573,20 @@ SDK,에스디케이,abbreviation
                 <div className="grid gap-4 sm:grid-cols-3">
                   <div>
                     <label htmlFor="add-term" className="mb-1 block text-xs font-medium">
-                      용어
+                      용어 (올바른 표기)
                     </label>
                     <input
                       id="add-term"
                       type="text"
                       value={formData.term}
                       onChange={(e) => setFormData((prev) => ({ ...prev, term: e.target.value }))}
-                      placeholder="예: SDK"
+                      placeholder="예: 피디아"
                       className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                     />
                   </div>
                   <div>
                     <label htmlFor="add-correction" className="mb-1 block text-xs font-medium">
-                      교정어
+                      발음 힌트 (선택, 콤마로 여러 개)
                     </label>
                     <input
                       id="add-correction"
@@ -656,7 +595,7 @@ SDK,에스디케이,abbreviation
                       onChange={(e) =>
                         setFormData((prev) => ({ ...prev, correction: e.target.value }))
                       }
-                      placeholder="예: 에스디케이"
+                      placeholder="예: 피디야, 피디얌"
                       className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                     />
                   </div>
@@ -690,11 +629,7 @@ SDK,에스디케이,abbreviation
                   <Button
                     size="sm"
                     onClick={handleAdd}
-                    disabled={
-                      !formData.term.trim() ||
-                      !formData.correction.trim() ||
-                      createVocabulary.isPending
-                    }
+                    disabled={!formData.term.trim() || createVocabulary.isPending}
                   >
                     추가
                   </Button>
@@ -720,7 +655,7 @@ SDK,에스디케이,abbreviation
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="px-4 py-3 text-left font-medium">용어</th>
-                        <th className="px-4 py-3 text-left font-medium">교정어</th>
+                        <th className="px-4 py-3 text-left font-medium">발음 힌트</th>
                         <th className="px-4 py-3 text-left font-medium">카테고리</th>
                         <th className="px-4 py-3 text-right font-medium">작업</th>
                       </tr>
@@ -777,11 +712,7 @@ SDK,에스디케이,abbreviation
                                     size="sm"
                                     variant="ghost"
                                     onClick={handleSaveEdit}
-                                    disabled={
-                                      !formData.term.trim() ||
-                                      !formData.correction.trim() ||
-                                      updateVocabulary.isPending
-                                    }
+                                    disabled={!formData.term.trim() || updateVocabulary.isPending}
                                   >
                                     저장
                                   </Button>
@@ -794,7 +725,13 @@ SDK,에스디케이,abbreviation
                           ) : (
                             <>
                               <td className="px-4 py-3 font-medium">{vocab.term}</td>
-                              <td className="px-4 py-3">{vocab.correction}</td>
+                              <td className="px-4 py-3 text-muted-foreground">
+                                {vocab.correction !== vocab.term ? (
+                                  <span>← {vocab.correction}</span>
+                                ) : (
+                                  <span className="text-muted-foreground/50">-</span>
+                                )}
+                              </td>
                               <td className="px-4 py-3">
                                 <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs">
                                   {CATEGORY_LABELS[vocab.category]}
@@ -1125,59 +1062,48 @@ SDK,에스디케이,abbreviation
         </DialogContent>
       </Dialog>
 
-      {/* Create Team Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+      {/* Edit Team Name Dialog */}
+      <Dialog open={showEditNameDialog} onOpenChange={setShowEditNameDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>새 팀 만들기</DialogTitle>
-            <DialogDescription>새로운 팀을 생성합니다.</DialogDescription>
+            <DialogTitle>팀 이름 변경</DialogTitle>
+            <DialogDescription>팀 이름을 변경합니다.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label htmlFor="team-name" className="mb-1 block text-sm font-medium">
-                팀 이름
+              <label htmlFor="edit-team-name" className="mb-1 block text-sm font-medium">
+                새 팀 이름
               </label>
               <Input
-                id="team-name"
+                id="edit-team-name"
                 type="text"
-                value={newTeamName}
-                onChange={(e) => setNewTeamName(e.target.value)}
+                value={editedTeamName}
+                onChange={(e) => setEditedTeamName(e.target.value)}
                 placeholder="팀 이름 입력"
+                autoFocus
               />
-            </div>
-            <div>
-              <label htmlFor="team-password" className="mb-1 block text-sm font-medium">
-                비밀번호 (선택)
-              </label>
-              <Input
-                id="team-password"
-                type="password"
-                value={newTeamPassword}
-                onChange={(e) => setNewTeamPassword(e.target.value)}
-                placeholder="비밀번호 입력 (선택)"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                비밀번호를 설정하면 팀 접근 시 인증이 필요합니다
-              </p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+            <Button variant="outline" onClick={() => setShowEditNameDialog(false)}>
               취소
             </Button>
             <Button
               onClick={() => {
-                if (!newTeamName.trim()) return;
-                createTeam.mutate({
-                  data: {
-                    name: newTeamName.trim(),
-                    password: newTeamPassword || undefined,
+                if (!teamId || !editedTeamName.trim()) return;
+                updateTeam.mutate(
+                  { teamId, data: { name: editedTeamName.trim() } },
+                  {
+                    onSuccess: () => {
+                      setShowEditNameDialog(false);
+                      setEditedTeamName("");
+                    },
                   },
-                });
+                );
               }}
-              disabled={!newTeamName.trim() || createTeam.isPending}
+              disabled={!editedTeamName.trim() || updateTeam.isPending}
             >
-              {createTeam.isPending ? "생성 중..." : "생성"}
+              {updateTeam.isPending ? "저장 중..." : "저장"}
             </Button>
           </DialogFooter>
         </DialogContent>

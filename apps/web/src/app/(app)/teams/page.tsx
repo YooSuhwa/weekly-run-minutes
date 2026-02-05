@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useSetAtom } from "jotai";
-import { Lock, LockOpen, Plus, Users } from "lucide-react";
+import { Key, Lock, LockOpen, MoreVertical, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { selectedTeamIdAtom } from "@/atoms/team";
@@ -16,6 +16,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
@@ -25,7 +32,9 @@ import {
   getListTeamsApiV1TeamsGetQueryKey,
   useAuthenticateTeamApiV1TeamsTeamIdAuthPost,
   useCreateTeamApiV1TeamsPost,
+  useDeleteTeamApiV1TeamsTeamIdDelete,
   useListTeamsApiV1TeamsGet,
+  useUpdateTeamApiV1TeamsTeamIdPut,
 } from "@/lib/api/__generated__/teams/teams";
 
 interface PasswordDialogState {
@@ -52,6 +61,30 @@ export default function TeamsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
   const [newTeamPassword, setNewTeamPassword] = useState("");
+
+  // Edit team dialog state
+  const [editDialog, setEditDialog] = useState<{ open: boolean; team: TeamResponse | null }>({
+    open: false,
+    team: null,
+  });
+  const [editTeamName, setEditTeamName] = useState("");
+
+  // Password dialog state (for setting/changing password)
+  const [passwordChangeDialog, setPasswordChangeDialog] = useState<{
+    open: boolean;
+    team: TeamResponse | null;
+  }>({
+    open: false,
+    team: null,
+  });
+  const [newPasswordForTeam, setNewPasswordForTeam] = useState("");
+  const [confirmPasswordForTeam, setConfirmPasswordForTeam] = useState("");
+
+  // Delete dialog state
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; team: TeamResponse | null }>({
+    open: false,
+    team: null,
+  });
 
   const { data: teams = [], isLoading, error } = useListTeamsApiV1TeamsGet();
 
@@ -81,6 +114,36 @@ export default function TeamsPage() {
       },
       onError: () => {
         setAuthError("비밀번호가 올바르지 않습니다");
+      },
+    },
+  });
+
+  const updateTeam = useUpdateTeamApiV1TeamsTeamIdPut({
+    mutation: {
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: getListTeamsApiV1TeamsGetQueryKey() });
+        setEditDialog({ open: false, team: null });
+        setEditTeamName("");
+        setPasswordChangeDialog({ open: false, team: null });
+        setNewPasswordForTeam("");
+        setConfirmPasswordForTeam("");
+        toast.success(`${data.name} 팀이 수정되었습니다`);
+      },
+      onError: () => {
+        toast.error("팀 수정에 실패했습니다");
+      },
+    },
+  });
+
+  const deleteTeam = useDeleteTeamApiV1TeamsTeamIdDelete({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListTeamsApiV1TeamsGetQueryKey() });
+        setDeleteDialog({ open: false, team: null });
+        toast.success("팀이 삭제되었습니다");
+      },
+      onError: () => {
+        toast.error("팀 삭제에 실패했습니다");
       },
     },
   });
@@ -184,11 +247,54 @@ export default function TeamsPage() {
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-lg">{team.name}</CardTitle>
-                    {team.has_password ? (
-                      <Lock className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <LockOpen className="h-4 w-4 text-muted-foreground" />
-                    )}
+                    <div className="flex items-center gap-1">
+                      {team.has_password ? (
+                        <Lock className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <LockOpen className="h-4 w-4 text-muted-foreground" />
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setEditTeamName(team.name);
+                              setEditDialog({ open: true, team });
+                            }}
+                          >
+                            <Pencil className="mr-2 h-4 w-4" />
+                            이름 변경
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setNewPasswordForTeam("");
+                              setConfirmPasswordForTeam("");
+                              setPasswordChangeDialog({ open: true, team });
+                            }}
+                          >
+                            <Key className="mr-2 h-4 w-4" />
+                            {team.has_password ? "비밀번호 변경" : "비밀번호 설정"}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => setDeleteDialog({ open: true, team })}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            삭제
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -294,6 +400,155 @@ export default function TeamsPage() {
               disabled={!newTeamName.trim() || createTeam.isPending}
             >
               {createTeam.isPending ? "생성 중..." : "생성"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Team Name Dialog */}
+      <Dialog
+        open={editDialog.open}
+        onOpenChange={(open) => !open && setEditDialog({ open: false, team: null })}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>팀 이름 변경</DialogTitle>
+            <DialogDescription>팀 이름을 변경합니다.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-team-name">새 팀 이름</Label>
+              <Input
+                id="edit-team-name"
+                type="text"
+                value={editTeamName}
+                onChange={(e) => setEditTeamName(e.target.value)}
+                placeholder="팀 이름 입력"
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialog({ open: false, team: null })}>
+              취소
+            </Button>
+            <Button
+              onClick={() => {
+                if (!editDialog.team || !editTeamName.trim()) return;
+                updateTeam.mutate({
+                  teamId: editDialog.team.id,
+                  data: { name: editTeamName.trim() },
+                });
+              }}
+              disabled={!editTeamName.trim() || updateTeam.isPending}
+            >
+              {updateTeam.isPending ? "저장 중..." : "저장"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Password Change Dialog */}
+      <Dialog
+        open={passwordChangeDialog.open}
+        onOpenChange={(open) => !open && setPasswordChangeDialog({ open: false, team: null })}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              비밀번호 {passwordChangeDialog.team?.has_password ? "변경" : "설정"}
+            </DialogTitle>
+            <DialogDescription>
+              팀에 접근하기 위한 비밀번호를{" "}
+              {passwordChangeDialog.team?.has_password ? "변경" : "설정"}합니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-team-password">새 비밀번호</Label>
+              <Input
+                id="new-team-password"
+                type="password"
+                value={newPasswordForTeam}
+                onChange={(e) => setNewPasswordForTeam(e.target.value)}
+                placeholder="새 비밀번호 입력"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm-team-password">비밀번호 확인</Label>
+              <Input
+                id="confirm-team-password"
+                type="password"
+                value={confirmPasswordForTeam}
+                onChange={(e) => setConfirmPasswordForTeam(e.target.value)}
+                placeholder="비밀번호 다시 입력"
+              />
+            </div>
+            {newPasswordForTeam &&
+              confirmPasswordForTeam &&
+              newPasswordForTeam !== confirmPasswordForTeam && (
+                <p className="text-sm text-destructive">비밀번호가 일치하지 않습니다</p>
+              )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPasswordChangeDialog({ open: false, team: null })}
+            >
+              취소
+            </Button>
+            <Button
+              onClick={() => {
+                if (
+                  !passwordChangeDialog.team ||
+                  !newPasswordForTeam ||
+                  newPasswordForTeam !== confirmPasswordForTeam
+                )
+                  return;
+                updateTeam.mutate({
+                  teamId: passwordChangeDialog.team.id,
+                  data: { password: newPasswordForTeam },
+                });
+              }}
+              disabled={
+                !newPasswordForTeam ||
+                newPasswordForTeam !== confirmPasswordForTeam ||
+                updateTeam.isPending
+              }
+            >
+              {updateTeam.isPending ? "저장 중..." : "저장"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Team Dialog */}
+      <Dialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => !open && setDeleteDialog({ open: false, team: null })}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>팀 삭제</DialogTitle>
+            <DialogDescription>
+              정말로 &quot;{deleteDialog.team?.name}&quot; 팀을 삭제하시겠습니까?
+              <br />이 작업은 되돌릴 수 없으며, 모든 회의와 회의록이 삭제됩니다.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialog({ open: false, team: null })}>
+              취소
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (!deleteDialog.team) return;
+                deleteTeam.mutate({ teamId: deleteDialog.team.id });
+              }}
+              disabled={deleteTeam.isPending}
+            >
+              {deleteTeam.isPending ? "삭제 중..." : "삭제"}
             </Button>
           </DialogFooter>
         </DialogContent>

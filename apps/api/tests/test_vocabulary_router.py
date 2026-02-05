@@ -116,10 +116,26 @@ class TestCreateVocabulary:
         # Create without category (should default to terminology)
         response = await client.post(
             f"/api/v1/teams/{team_id}/vocabulary",
-            json={"term": "GPT", "correction": "Generative Pre-trained Transformer"},
+            json={"term": "GPT", "correction": "지피티"},
         )
         assert response.status_code == 201
         assert response.json()["category"] == "terminology"
+
+    @pytest.mark.asyncio
+    async def test_create_without_correction(self, client: AsyncClient):
+        """correction 없이 term만 제공하면 correction이 term과 동일하게 설정됨."""
+        team_resp = await client.post("/api/v1/teams", json={"name": "Test Team"})
+        team_id = team_resp.json()["id"]
+
+        # Create with only term (correction should default to term)
+        response = await client.post(
+            f"/api/v1/teams/{team_id}/vocabulary",
+            json={"term": "피디아"},  # No correction provided
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["term"] == "피디아"
+        assert data["correction"] == "피디아"  # Defaults to term
 
     @pytest.mark.asyncio
     async def test_create_duplicate_term_conflict(self, client: AsyncClient):

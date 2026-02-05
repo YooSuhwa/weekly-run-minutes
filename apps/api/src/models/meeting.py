@@ -91,6 +91,11 @@ class Meeting(BaseModel):
     # Example: "OOO 이름이 나오는 얘기는 다 빼줘"
     context_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Selected attendees for this meeting (subset of team members)
+    # If None, all active team members are considered attendees
+    # Structure: ["홍길동", "김철수", ...]
+    attendees: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
     # Realtime orchestration state (P1-full)
     current_speaker_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     current_item_index: Mapped[int | None] = mapped_column(Integer, nullable=True)

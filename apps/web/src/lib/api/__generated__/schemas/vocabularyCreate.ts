@@ -9,17 +9,18 @@ import type { VocabularyCategory } from './vocabularyCategory';
 
 /**
  * Schema for creating a vocabulary term.
+
+term: 올바른 용어 (AI가 정확히 인식해야 할 단어)
+correction: 비슷하게 들릴 수 있는 발음/표기 힌트 (선택, 미입력시 term과 동일)
  */
 export interface VocabularyCreate {
   /**
+   * 올바른 용어
    * @minLength 1
    * @maxLength 200
    */
   term: string;
-  /**
-   * @minLength 1
-   * @maxLength 200
-   */
-  correction: string;
+  /** 발음 힌트 (선택) */
+  correction?: string | null;
   category?: VocabularyCategory;
 }

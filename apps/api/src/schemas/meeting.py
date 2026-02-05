@@ -30,6 +30,7 @@ class MeetingCreate(BaseSchema):
     agenda_items: list[AgendaItem] | None = None
     context_terms: list[str] | None = Field(None, max_length=50)
     context_instructions: str | None = Field(None, max_length=1000)
+    attendees: list[str] | None = None  # Selected attendees (if None, all active members)
 
 
 class MeetingUpdate(BaseSchema):
@@ -41,6 +42,7 @@ class MeetingUpdate(BaseSchema):
     agenda_items: list[AgendaItem] | None = None
     context_terms: list[str] | None = Field(None, max_length=50)
     context_instructions: str | None = Field(None, max_length=1000)
+    attendees: list[str] | None = None  # Selected attendees (if None, all active members)
 
 
 class MeetingStatusUpdate(BaseSchema):
@@ -93,6 +95,7 @@ class MeetingResponse(IDSchema, TimestampSchema):
     agenda_items: list[AgendaItem] | None
     context_terms: list[str] | None
     context_instructions: str | None
+    attendees: list[str] | None  # Selected attendees
 
 
 class MeetingWithDetails(MeetingResponse):

@@ -22,4 +22,5 @@ export interface MeetingCreate {
   agenda_items?: AgendaItem[] | null;
   context_terms?: string[] | null;
   context_instructions?: string | null;
+  attendees?: string[] | null;
 }

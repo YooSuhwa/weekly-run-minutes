@@ -220,6 +220,100 @@ class TestUpdatePage:
                 await confluence_service.update_page("page-1", "title", "<p>b</p>", 1)
 
 
+class TestAddLabels:
+    @pytest.mark.asyncio
+    async def test_add_labels_success(self, confluence_service):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "results": [
+                {"prefix": "global", "name": "회의록", "id": "label-1"},
+            ]
+        }
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_client_cls.return_value = mock_client
+
+            result = await confluence_service.add_labels("page-1", ["회의록"])
+            assert len(result) == 1
+            assert result[0]["name"] == "회의록"
+
+            # Verify the request payload
+            call_args = mock_client.post.call_args
+            assert call_args[1]["json"] == [{"prefix": "global", "name": "회의록"}]
+
+    @pytest.mark.asyncio
+    async def test_add_labels_multiple(self, confluence_service):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "results": [
+                {"prefix": "global", "name": "회의록", "id": "label-1"},
+                {"prefix": "global", "name": "주간", "id": "label-2"},
+            ]
+        }
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_client_cls.return_value = mock_client
+
+            result = await confluence_service.add_labels("page-1", ["회의록", "주간"])
+            assert len(result) == 2
+
+    @pytest.mark.asyncio
+    async def test_add_labels_empty_list(self, confluence_service):
+        """Empty labels list should return empty list without API call."""
+        result = await confluence_service.add_labels("page-1", [])
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_add_labels_failure_returns_empty(self, confluence_service):
+        """Label addition failure should return empty list (non-critical)."""
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+        mock_response.text = "Forbidden"
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_client_cls.return_value = mock_client
+
+            # Should not raise, just return empty
+            result = await confluence_service.add_labels("page-1", ["회의록"])
+            assert result == []
+
+    @pytest.mark.asyncio
+    async def test_add_labels_uses_v1_api(self, confluence_service):
+        """Should use V1 REST API endpoint for labels."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"results": []}
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_client_cls.return_value = mock_client
+
+            await confluence_service.add_labels("page-123", ["회의록"])
+
+            call_args = mock_client.post.call_args
+            url = call_args[0][0]
+            # Should use /rest/api/content/{id}/label (V1), not /api/v2
+            assert "/rest/api/content/page-123/label" in url
+            assert "/api/v2" not in url
+
+
 class TestUploadMeetingMinutes:
     @pytest.mark.asyncio
     async def test_upload_success(self, confluence_service):
@@ -227,6 +321,10 @@ class TestUploadMeetingMinutes:
             confluence_service,
             "create_page",
             return_value={"id": "page-99", "title": "2024-01-15 회의록"},
+        ), patch.object(
+            confluence_service,
+            "add_labels",
+            return_value=[],
         ):
             result = await confluence_service.upload_meeting_minutes(
                 title="2024-01-15 주간회의 회의록",
@@ -234,6 +332,46 @@ class TestUploadMeetingMinutes:
             )
             assert result["id"] == "page-99"
             assert "url" in result
+            assert "labels" in result
+
+    @pytest.mark.asyncio
+    async def test_upload_with_labels(self, confluence_service):
+        """Should add labels when provided."""
+        with patch.object(
+            confluence_service,
+            "create_page",
+            return_value={"id": "page-99", "title": "2024-01-15 회의록"},
+        ) as mock_create, patch.object(
+            confluence_service,
+            "add_labels",
+            return_value=[{"name": "회의록"}],
+        ) as mock_labels:
+            result = await confluence_service.upload_meeting_minutes(
+                title="2024-01-15 주간회의 회의록",
+                markdown_content="# 회의록",
+                labels=["회의록"],
+            )
+            assert result["labels"] == ["회의록"]
+            mock_labels.assert_called_once_with("page-99", ["회의록"])
+
+    @pytest.mark.asyncio
+    async def test_upload_without_labels(self, confluence_service):
+        """Should not call add_labels when no labels provided."""
+        with patch.object(
+            confluence_service,
+            "create_page",
+            return_value={"id": "page-99", "title": "2024-01-15 회의록"},
+        ), patch.object(
+            confluence_service,
+            "add_labels",
+            return_value=[],
+        ) as mock_labels:
+            result = await confluence_service.upload_meeting_minutes(
+                title="2024-01-15 주간회의 회의록",
+                markdown_content="# 회의록",
+            )
+            assert result["labels"] == []
+            mock_labels.assert_not_called()
 
 
 class TestMarkdownToConfluenceHtml:
@@ -401,3 +539,222 @@ Some paragraph"""
         assert "    - Sub item" in result
         assert "# Title" in result
         assert "Some paragraph" in result
+
+
+class TestExtractTaskSections:
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.service = ConfluenceService()
+
+    def test_no_tasks(self):
+        content = "- Regular item\n- Another item"
+        result, tasks = self.service._extract_task_sections(content)
+        assert tasks == []
+        assert "- Regular item" in result
+
+    def test_single_unchecked_task(self):
+        content = "- [ ] Task 1"
+        result, tasks = self.service._extract_task_sections(content)
+        assert len(tasks) == 1
+        assert len(tasks[0]) == 1
+        assert tasks[0][0]["text"] == "Task 1"
+        assert tasks[0][0]["checked"] is False
+        assert tasks[0][0]["assignee"] is None
+
+    def test_single_checked_task(self):
+        content = "- [x] Task 1"
+        result, tasks = self.service._extract_task_sections(content)
+        assert len(tasks) == 1
+        assert tasks[0][0]["checked"] is True
+
+    def test_task_with_assignee(self):
+        content = "- [ ] @홍길동: 보고서 작성"
+        result, tasks = self.service._extract_task_sections(content)
+        assert tasks[0][0]["assignee"] == "홍길동"
+        assert tasks[0][0]["text"] == "보고서 작성"
+
+    def test_multiple_tasks(self):
+        content = """- [ ] Task 1
+- [x] Task 2
+- [ ] Task 3"""
+        result, tasks = self.service._extract_task_sections(content)
+        assert len(tasks) == 1
+        assert len(tasks[0]) == 3
+
+    def test_tasks_separated_by_text(self):
+        content = """- [ ] Task 1
+
+Some text
+
+- [ ] Task 2"""
+        result, tasks = self.service._extract_task_sections(content)
+        assert len(tasks) == 2
+        assert len(tasks[0]) == 1
+        assert len(tasks[1]) == 1
+
+
+class TestBuildTaskListHtml:
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.service = ConfluenceService()
+
+    def test_empty_tasks(self):
+        result = self.service._build_task_list_html([])
+        assert result == ""
+
+    def test_single_task(self):
+        tasks = [{"text": "Task 1", "checked": False, "assignee": None, "indent": 0}]
+        result = self.service._build_task_list_html(tasks)
+        assert "<ac:task-list>" in result
+        assert "</ac:task-list>" in result
+        assert "<ac:task-status>incomplete</ac:task-status>" in result
+        assert "<ac:task-body>Task 1</ac:task-body>" in result
+
+    def test_checked_task(self):
+        tasks = [{"text": "Task 1", "checked": True, "assignee": None, "indent": 0}]
+        result = self.service._build_task_list_html(tasks)
+        assert "<ac:task-status>complete</ac:task-status>" in result
+
+    def test_task_with_assignee(self):
+        tasks = [{"text": "보고서 작성", "checked": False, "assignee": "홍길동", "indent": 0}]
+        result = self.service._build_task_list_html(tasks)
+        assert "<strong>홍길동</strong>: 보고서 작성" in result
+
+
+class TestMarkdownWithTasksToHtml:
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.service = ConfluenceService()
+
+    def test_full_document_with_tasks(self):
+        content = """## Action 항목
+
+- [ ] @홍길동: 보고서 작성 (기한: 2024-01-20)
+- [ ] @김철수: 코드 리뷰
+
+## 의사 결정
+
+- API 버전을 v2로 업그레이드"""
+
+        result = self.service._markdown_to_confluence_html(content)
+        assert "<ac:task-list>" in result
+        assert "<strong>홍길동</strong>: 보고서 작성" in result
+        assert "<strong>김철수</strong>: 코드 리뷰" in result
+        assert "API 버전을 v2로 업그레이드" in result
+
+
+class TestExtractPageProperties:
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.service = ConfluenceService()
+
+    def test_no_properties(self):
+        content = "# 회의록\n\n내용입니다."
+        result, details = self.service._extract_page_properties(content)
+        assert details == ""
+        assert "# 회의록" in result
+
+    def test_single_property(self):
+        content = "**일시**: 2024-01-15 14:00\n\n# 목표"
+        result, details = self.service._extract_page_properties(content)
+        assert "<ac:structured-macro ac:name=\"details\">" in details
+        assert "<th>일시</th><td>2024-01-15 14:00</td>" in details
+        assert "**일시**" not in result
+
+    def test_all_properties(self):
+        content = """**일시**: 2024-01-15 14:00
+**장소**: 회의실 A
+**참여자**: 홍길동, 김철수
+
+# 목표"""
+        result, details = self.service._extract_page_properties(content)
+        assert "<th>일시</th>" in details
+        assert "<th>장소</th>" in details
+        assert "<th>참여자</th>" in details
+        assert "홍길동, 김철수" in details
+        assert "# 목표" in result
+
+    def test_properties_order_maintained(self):
+        """Properties should be in order: 일시, 장소, 참여자"""
+        content = """**참여자**: 홍길동
+**일시**: 2024-01-15
+**장소**: 회의실"""
+        result, details = self.service._extract_page_properties(content)
+        # Check order in output
+        일시_pos = details.find("일시")
+        장소_pos = details.find("장소")
+        참여자_pos = details.find("참여자")
+        assert 일시_pos < 장소_pos < 참여자_pos
+
+
+class TestBuildDetailsMacro:
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.service = ConfluenceService()
+
+    def test_empty_properties(self):
+        result = self.service._build_details_macro({})
+        assert result == ""
+
+    def test_single_property(self):
+        result = self.service._build_details_macro({"일시": "2024-01-15"})
+        assert "<ac:structured-macro ac:name=\"details\">" in result
+        assert "<ac:rich-text-body>" in result
+        assert "<th>일시</th><td>2024-01-15</td>" in result
+
+    def test_full_properties(self):
+        props = {
+            "일시": "2024-01-15 14:00",
+            "장소": "회의실 A",
+            "참여자": "홍길동, 김철수",
+        }
+        result = self.service._build_details_macro(props)
+        assert "<table>" in result
+        assert "<tbody>" in result
+        assert "회의실 A" in result
+
+
+class TestFullDocumentWithDetailsAndTasks:
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.service = ConfluenceService()
+
+    def test_full_meeting_minutes(self):
+        content = """**일시**: 2024-01-15 14:00
+**장소**: 회의실 A
+**참여자**: 홍길동, 김철수
+
+# 목표
+
+- 프로젝트 진행 상황 공유
+
+# 회의 내용
+
+## 프로젝트 현황
+- 현재 80% 완료
+
+---
+
+## Action 항목
+
+- [ ] @홍길동: 문서 작성 (기한: 2024-01-20)
+- [ ] @김철수: 코드 리뷰
+
+## 의사 결정
+
+- API v2 사용 결정"""
+
+        result = self.service._markdown_to_confluence_html(content)
+
+        # Details macro should be at the beginning
+        assert result.startswith("<ac:structured-macro ac:name=\"details\">")
+        assert "<th>일시</th>" in result
+        assert "<th>참여자</th>" in result
+
+        # Task list should be present
+        assert "<ac:task-list>" in result
+        assert "<strong>홍길동</strong>: 문서 작성" in result
+
+        # Regular content should be present
+        assert "프로젝트 진행 상황 공유" in result
+        assert "API v2 사용 결정" in result

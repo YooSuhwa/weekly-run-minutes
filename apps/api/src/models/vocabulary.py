@@ -4,7 +4,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import Enum, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.base import BaseModel
@@ -38,6 +38,12 @@ class Vocabulary(BaseModel):
     term: Mapped[str] = mapped_column(String(200), nullable=False)
     correction: Mapped[str] = mapped_column(String(200), nullable=False)
     category: Mapped[VocabularyCategory] = mapped_column(
+        Enum(
+            VocabularyCategory,
+            name="vocabularycategory",
+            create_type=False,  # Type already exists in DB
+            values_callable=lambda e: [member.value for member in e],  # Use lowercase values
+        ),
         default=VocabularyCategory.TERMINOLOGY,
         nullable=False,
     )

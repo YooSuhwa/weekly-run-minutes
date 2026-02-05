@@ -96,7 +96,7 @@ async def create_vocabulary(
     vocabulary = Vocabulary(
         team_id=team_id,
         term=data.term,
-        correction=data.correction,
+        correction=data.correction or data.term,  # Default to term if not provided
         category=data.category,
     )
 
@@ -199,7 +199,7 @@ async def bulk_import_vocabulary(
         vocabulary = Vocabulary(
             team_id=team_id,
             term=item.term,
-            correction=item.correction,
+            correction=item.correction or item.term,  # Default to term if not provided
             category=item.category,
         )
         db.add(vocabulary)

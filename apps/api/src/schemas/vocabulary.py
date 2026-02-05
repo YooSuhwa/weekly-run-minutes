@@ -9,10 +9,16 @@ from src.schemas.common import BaseSchema, IDSchema, TimestampSchema
 
 
 class VocabularyCreate(BaseSchema):
-    """Schema for creating a vocabulary term."""
+    """Schema for creating a vocabulary term.
 
-    term: str = Field(..., min_length=1, max_length=200)
-    correction: str = Field(..., min_length=1, max_length=200)
+    term: 올바른 용어 (AI가 정확히 인식해야 할 단어)
+    correction: 비슷하게 들릴 수 있는 발음/표기 힌트 (선택, 미입력시 term과 동일)
+    """
+
+    term: str = Field(..., min_length=1, max_length=200, description="올바른 용어")
+    correction: str | None = Field(
+        None, min_length=1, max_length=200, description="발음 힌트 (선택)"
+    )
     category: VocabularyCategory = Field(default=VocabularyCategory.TERMINOLOGY)
 
 
@@ -36,8 +42,10 @@ class VocabularyResponse(IDSchema, TimestampSchema):
 class VocabularyBulkImportItem(BaseSchema):
     """Schema for a single item in bulk import."""
 
-    term: str = Field(..., min_length=1, max_length=200)
-    correction: str = Field(..., min_length=1, max_length=200)
+    term: str = Field(..., min_length=1, max_length=200, description="올바른 용어")
+    correction: str | None = Field(
+        None, min_length=1, max_length=200, description="발음 힌트 (선택)"
+    )
     category: VocabularyCategory = Field(default=VocabularyCategory.TERMINOLOGY)
 
 

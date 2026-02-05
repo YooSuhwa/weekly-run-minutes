@@ -31,6 +31,7 @@ export interface MeetingWithDetails {
   agenda_items: AgendaItem[] | null;
   context_terms: string[] | null;
   context_instructions: string | null;
+  attendees: string[] | null;
   recording: RecordingInfo | null;
   weekly_report: WeeklyReportInfo | null;
   minutes: MeetingMinutesInfo | null;
