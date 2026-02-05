@@ -23,6 +23,7 @@ import {
   GripVertical,
   Link as LinkIcon,
   ListTodo,
+  Loader2,
   MessageSquare,
   Plus,
   Tag,
@@ -30,12 +31,12 @@ import {
   X,
 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { confluenceAtom } from "@/atoms/confluence";
 import { recordingAtom } from "@/atoms/recording";
 import { selectedMembersAtom, type TeamMember, teamMembersAtom } from "@/atoms/team";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -45,12 +46,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { FileUpload } from "@/components/ui/file-upload";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { useToast } from "@/components/ui/toast";
 import { Weeky } from "@/components/weeky/weeky";
 import type { WeeklyReportResponse } from "@/lib/api/__generated__/schemas/weeklyReportResponse";
 
 interface AgendaItem {
+  id: string;
   title: string;
   description: string;
 }
@@ -95,18 +99,21 @@ import { useStartTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost 
 import { useLoadWeeklyReportForMeetingApiV1WeeklyReportsMeetingsMeetingIdWeeklyReportPost } from "@/lib/api/__generated__/weekly-reports/weekly-reports";
 import { cn } from "@/lib/utils";
 
-const defaultAgendaItem: AgendaItem = {
+const createAgendaItem = (): AgendaItem => ({
+  id: `agenda-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
   title: "",
   description: "",
-};
+});
 
 // Sortable attendee item component
 function SortableAttendeeItem({
   attendee,
   onRemove,
+  showOrder = true,
 }: {
   attendee: MeetingAttendee;
   onRemove: (id: string) => void;
+  showOrder?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: attendee.id,
@@ -122,29 +129,40 @@ function SortableAttendeeItem({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2",
-        isDragging && "opacity-50 shadow-lg",
+        "flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 transition-all duration-200",
+        isDragging && "scale-[1.02] border-primary/50 opacity-80 shadow-lg",
+        !isDragging && "hover:border-border/80 hover:bg-accent/30",
       )}
     >
-      <button
-        type="button"
-        className="cursor-grab touch-none text-muted-foreground hover:text-foreground focus:outline-none active:cursor-grabbing"
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
-        {attendee.order}
-      </span>
-      <span className="flex-1 text-sm">
+      {showOrder && (
+        <button
+          type="button"
+          aria-label={`${attendee.name} 순서 변경`}
+          className="cursor-grab touch-none rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+      )}
+      {showOrder && (
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+          {attendee.order}
+        </span>
+      )}
+      <span className="flex-1 text-sm font-medium">
         {attendee.name}
-        {attendee.isGuest && <span className="ml-1 text-xs text-muted-foreground">(게스트)</span>}
+        {attendee.isGuest && (
+          <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
+            게스트
+          </span>
+        )}
       </span>
       <button
         type="button"
         onClick={() => onRemove(attendee.id)}
-        className="text-muted-foreground hover:text-destructive"
+        aria-label={`${attendee.name} 제거`}
+        className="cursor-pointer rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <X className="h-4 w-4" />
       </button>
@@ -157,6 +175,12 @@ export default function MeetingSetupPage() {
   const router = useRouter();
   const toast = useToast();
   const meetingId = params.id as string;
+
+  // Generate unique IDs for form accessibility
+  const confluenceInputId = useId();
+  const guestInputId = useId();
+  const termInputId = useId();
+  const instructionsInputId = useId();
 
   const [recording, setRecording] = useAtom(recordingAtom);
   const [confluence, setConfluence] = useAtom(confluenceAtom);
@@ -442,74 +466,120 @@ export default function MeetingSetupPage() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
-      <div className="mb-8 flex items-center gap-4">
-        <Weeky
-          expression={confluence.weeklyReportLoaded ? "noting" : "questioning"}
-          size="md"
-          message={
-            confluence.weeklyReportLoaded
-              ? "주간업무록을 확인했어요! 녹음 파일을 업로드해주세요."
-              : "회의록을 생성할 준비를 해볼까요?"
-          }
-        />
-      </div>
+    <div className="mx-auto max-w-3xl px-4 py-6 sm:py-8">
+      {/* Header with Weeky */}
+      <header className="mb-8">
+        <div className="flex items-start gap-4 rounded-2xl bg-gradient-to-br from-primary/5 via-transparent to-transparent p-4 sm:p-6">
+          <Weeky
+            expression={
+              recording.file
+                ? "celebrating"
+                : confluence.weeklyReportLoaded
+                  ? "noting"
+                  : "questioning"
+            }
+            size="md"
+            message={
+              recording.file
+                ? "준비가 다 됐어요! 이제 회의록을 생성해볼까요?"
+                : confluence.weeklyReportLoaded
+                  ? "주간업무록을 확인했어요! 녹음 파일을 업로드해주세요."
+                  : "회의록을 생성할 준비를 해볼까요?"
+            }
+          />
+        </div>
+      </header>
 
-      <div className="space-y-6">
+      {/* Form Sections */}
+      <div className="space-y-5">
         {/* Confluence Weekly Report - only for weekly_report type */}
         {!isGeneralMeeting && (
-          <Card className={cn(confluence.weeklyReportLoaded && "border-primary/30 bg-primary/5")}>
-            <CardHeader>
+          <Card
+            className={cn(
+              "transition-all duration-300",
+              confluence.weeklyReportLoaded && "border-primary/40 bg-primary/5 shadow-sm",
+            )}
+          >
+            <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
-                <LinkIcon className="h-4 w-4" />
-                주간업무록 (선택)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Confluence 페이지 URL 또는 ID 입력"
-                  value={confluencePageId}
-                  onChange={(e) => setConfluencePageId(e.target.value)}
-                  className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  disabled={confluence.weeklyReportLoaded}
-                />
-                <Button
-                  variant="outline"
-                  onClick={handleLoadWeeklyReport}
-                  disabled={
-                    !confluencePageId.trim() ||
-                    confluence.weeklyReportLoaded ||
-                    loadWeeklyReport.isPending
-                  }
-                >
-                  {confluence.weeklyReportLoaded ? (
-                    <Check className="h-4 w-4" />
-                  ) : loadWeeklyReport.isPending ? (
-                    "로딩..."
-                  ) : (
-                    "불러오기"
+                <div
+                  className={cn(
+                    "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
+                    confluence.weeklyReportLoaded ? "bg-primary/20" : "bg-muted",
                   )}
-                </Button>
+                >
+                  <LinkIcon
+                    className={cn(
+                      "h-4 w-4",
+                      confluence.weeklyReportLoaded ? "text-primary" : "text-muted-foreground",
+                    )}
+                  />
+                </div>
+                주간업무록
+                <span className="text-xs font-normal text-muted-foreground">(선택)</span>
+              </CardTitle>
+              <CardDescription>
+                Confluence에서 주간업무록을 불러와 회의록 생성에 참조합니다
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor={confluenceInputId} className="sr-only">
+                  Confluence 페이지 URL 또는 ID
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    id={confluenceInputId}
+                    type="url"
+                    placeholder="Confluence 페이지 URL 또는 ID 입력"
+                    value={confluencePageId}
+                    onChange={(e) => setConfluencePageId(e.target.value)}
+                    disabled={confluence.weeklyReportLoaded}
+                    className="flex-1"
+                  />
+                  <Button
+                    variant={confluence.weeklyReportLoaded ? "secondary" : "outline"}
+                    onClick={handleLoadWeeklyReport}
+                    disabled={
+                      !confluencePageId.trim() ||
+                      confluence.weeklyReportLoaded ||
+                      loadWeeklyReport.isPending
+                    }
+                    className="cursor-pointer min-w-[100px]"
+                  >
+                    {confluence.weeklyReportLoaded ? (
+                      <>
+                        <Check className="h-4 w-4 text-primary" />
+                        <span className="text-primary">연결됨</span>
+                      </>
+                    ) : loadWeeklyReport.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>로딩 중</span>
+                      </>
+                    ) : (
+                      "불러오기"
+                    )}
+                  </Button>
+                </div>
               </div>
 
               {/* Smart Preview */}
               {confluence.weeklyReportLoaded && weeklyReportPreview && (
-                <div className="mt-4 rounded-lg bg-gradient-to-br from-[oklch(0.97_0.03_175)] to-[oklch(0.95_0.05_200)] p-4">
+                <div className="rounded-xl bg-gradient-to-br from-primary/5 to-primary/10 p-4">
                   <div className="flex items-start gap-3">
                     <Weeky expression="noting" size="sm" message="" />
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-foreground mb-2">
+                      <p className="mb-2 text-sm font-medium text-foreground">
                         오늘의 안건을 확인했어요!
                       </p>
-                      <ul className="space-y-1">
-                        {getWeeklyReportSummary().map((item, idx) => (
+                      <ul className="space-y-1.5" aria-label="주간업무록 요약">
+                        {getWeeklyReportSummary().map((item) => (
                           <li
-                            key={idx}
-                            className="text-xs text-muted-foreground flex items-center gap-2"
+                            key={item}
+                            className="flex items-center gap-2 text-xs text-muted-foreground"
                           >
-                            <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                            <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
                             {item}
                           </li>
                         ))}
@@ -517,7 +587,7 @@ export default function MeetingSetupPage() {
                       <Button
                         variant="link"
                         size="sm"
-                        className="mt-2 p-0 h-auto text-xs"
+                        className="mt-3 h-auto cursor-pointer p-0 text-xs font-medium"
                         onClick={() => setWeeklyReportPreview(weeklyReportPreview)}
                       >
                         전체 내용 보기 →
@@ -528,7 +598,14 @@ export default function MeetingSetupPage() {
               )}
 
               {confluence.weeklyReportLoaded && !weeklyReportPreview && (
-                <p className="mt-2 text-xs text-green-600">주간업무록이 연결되었습니다</p>
+                <output
+                  aria-live="polite"
+                  aria-atomic="true"
+                  className="flex items-center gap-2 text-sm text-primary"
+                >
+                  <Check className="h-4 w-4" aria-hidden="true" />
+                  주간업무록이 연결되었습니다
+                </output>
               )}
             </CardContent>
           </Card>
@@ -537,34 +614,43 @@ export default function MeetingSetupPage() {
         {/* Agenda Items - only for general meetings (P2) */}
         {isGeneralMeeting && (
           <Card>
-            <CardHeader>
+            <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
-                <ListTodo className="h-4 w-4" />
-                회의 안건 (선택)
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
+                  <ListTodo className="h-4 w-4 text-muted-foreground" />
+                </div>
+                회의 안건
+                <span className="text-xs font-normal text-muted-foreground">(선택)</span>
               </CardTitle>
+              <CardDescription>
+                회의 안건을 추가하면 구조화된 회의록을 생성할 수 있습니다
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {agendaItems.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  회의 안건을 추가하면 구조화된 회의록을 생성할 수 있습니다.
-                </p>
-              ) : (
-                <div className="space-y-2">
+              {agendaItems.length > 0 && (
+                <ul className="space-y-3" aria-label="회의 안건 목록">
                   {agendaItems.map((item, index) => (
-                    <div key={index} className="flex items-start gap-2">
-                      <div className="flex-1 space-y-1">
-                        <input
+                    <li
+                      key={item.id}
+                      className="group flex items-start gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:border-border/80"
+                    >
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
+                        {index + 1}
+                      </span>
+                      <div className="flex-1 space-y-2">
+                        <Input
                           type="text"
-                          placeholder="안건"
+                          placeholder="안건 제목"
                           value={item.title}
                           onChange={(e) => {
                             const newItems = [...agendaItems];
                             newItems[index] = { ...item, title: e.target.value };
                             setAgendaItems(newItems);
                           }}
-                          className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                          className="h-9"
+                          aria-label={`안건 ${index + 1} 제목`}
                         />
-                        <input
+                        <Input
                           type="text"
                           placeholder="설명 (선택)"
                           value={item.description}
@@ -573,27 +659,30 @@ export default function MeetingSetupPage() {
                             newItems[index] = { ...item, description: e.target.value };
                             setAgendaItems(newItems);
                           }}
-                          className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-xs text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                          className="h-8 text-xs"
+                          aria-label={`안건 ${index + 1} 설명`}
                         />
                       </div>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="shrink-0"
-                        onClick={() => setAgendaItems(agendaItems.filter((_, i) => i !== index))}
+                        className="h-8 w-8 shrink-0 cursor-pointer opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                        onClick={() => setAgendaItems(agendaItems.filter((a) => a.id !== item.id))}
+                        aria-label={`안건 ${index + 1} 삭제`}
                       >
-                        <X className="h-4 w-4 text-muted-foreground" />
+                        <X className="h-4 w-4 text-muted-foreground hover:text-destructive" />
                       </Button>
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
               )}
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setAgendaItems([...agendaItems, { ...defaultAgendaItem }])}
+                onClick={() => setAgendaItems([...agendaItems, createAgendaItem()])}
+                className="cursor-pointer"
               >
-                <Plus className="h-4 w-4 mr-1" />
+                <Plus className="mr-1.5 h-4 w-4" />
                 안건 추가
               </Button>
             </CardContent>
@@ -602,17 +691,29 @@ export default function MeetingSetupPage() {
 
         {/* Attendees */}
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <Users className="h-4 w-4" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </div>
               참석자
+              {attendees.length > 0 && (
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                  {attendees.length}명
+                </span>
+              )}
             </CardTitle>
+            <CardDescription>회의에 참석하는 팀원과 게스트를 관리합니다</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Current attendees with drag-and-drop reordering */}
+          <CardContent className="space-y-5">
+            {/* Current attendees with drag-and-drop reordering (weekly) or simple list (general) */}
             {attendees.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground mb-2">발표 순서 (드래그하여 변경)</p>
+              <div className="space-y-2">
+                {!isGeneralMeeting && (
+                  <Label className="text-xs text-muted-foreground">
+                    발표 순서 (드래그하여 변경)
+                  </Label>
+                )}
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -622,12 +723,13 @@ export default function MeetingSetupPage() {
                     items={attendees.map((a) => a.id)}
                     strategy={verticalListSortingStrategy}
                   >
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       {attendees.map((attendee) => (
                         <SortableAttendeeItem
                           key={attendee.id}
                           attendee={attendee}
                           onRemove={handleRemoveAttendee}
+                          showOrder={!isGeneralMeeting}
                         />
                       ))}
                     </div>
@@ -637,8 +739,8 @@ export default function MeetingSetupPage() {
             )}
 
             {/* Team members toggle */}
-            <div>
-              <p className="text-xs text-muted-foreground mb-2">팀원 추가/제거</p>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">팀원 추가/제거</Label>
               <div className="flex flex-wrap gap-2">
                 {members.map((member) => {
                   const isAttending = attendees.some((a) => a.id === member.id);
@@ -647,11 +749,12 @@ export default function MeetingSetupPage() {
                       key={member.id}
                       type="button"
                       onClick={() => handleToggleAttendee(member.id)}
+                      aria-pressed={isAttending}
                       className={cn(
-                        "rounded-full border px-3 py-1.5 text-sm transition-colors",
+                        "cursor-pointer rounded-full border px-3 py-1.5 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                         isAttending
-                          ? "border-primary bg-primary/10 text-foreground"
-                          : "border-border text-muted-foreground hover:border-primary/50",
+                          ? "border-primary bg-primary/10 text-foreground shadow-sm"
+                          : "border-border text-muted-foreground hover:border-primary/50 hover:bg-accent/50",
                       )}
                     >
                       {member.name}
@@ -662,22 +765,27 @@ export default function MeetingSetupPage() {
             </div>
 
             {/* Add guest */}
-            <div>
-              <p className="text-xs text-muted-foreground mb-2">게스트 추가</p>
+            <div className="space-y-2">
+              <Label htmlFor={guestInputId} className="text-xs text-muted-foreground">
+                게스트 추가
+              </Label>
               <div className="flex gap-2">
-                <input
+                <Input
+                  id={guestInputId}
                   type="text"
                   placeholder="게스트 이름"
                   value={guestName}
                   onChange={(e) => setGuestName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleAddGuest()}
-                  className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  className="h-9 flex-1"
                 />
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleAddGuest}
                   disabled={!guestName.trim()}
+                  className="h-9 cursor-pointer px-3"
+                  aria-label="게스트 추가"
                 >
                   <Plus className="h-4 w-4" />
                 </Button>
@@ -688,93 +796,171 @@ export default function MeetingSetupPage() {
 
         {/* Context Terms */}
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <Tag className="h-4 w-4" />
-              세션 용어 (선택)
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
+                <Tag className="h-4 w-4 text-muted-foreground" />
+              </div>
+              세션 용어
+              <span className="text-xs font-normal text-muted-foreground">(선택)</span>
+              {contextTerms.length > 0 && (
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                  {contextTerms.length}/50
+                </span>
+              )}
             </CardTitle>
+            <CardDescription>
+              이번 회의에서 자주 사용될 용어나 키워드를 추가하면 STT 정확도와 회의록 품질이
+              향상됩니다
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              이번 회의에서 자주 사용될 용어나 키워드를 추가하면 STT 정확도와 회의록 품질이
-              향상됩니다.
-            </p>
-
             {/* Current terms */}
             {contextTerms.length > 0 && (
-              <div className="flex flex-wrap gap-2">
+              <ul
+                className="flex flex-wrap gap-2"
+                aria-label={`등록된 용어 ${contextTerms.length}개`}
+              >
                 {contextTerms.map((term) => (
-                  <span
+                  <li
                     key={term}
-                    className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-sm"
+                    className="group inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-primary/10"
                   >
                     {term}
                     <button
                       type="button"
                       onClick={() => handleRemoveTerm(term)}
-                      className="ml-0.5 text-muted-foreground hover:text-destructive"
+                      aria-label={`${term} 삭제`}
+                      className="cursor-pointer rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                     >
                       <X className="h-3 w-3" />
                     </button>
-                  </span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
 
             {/* Add term input */}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="용어 입력 (예: Phoenix, Sprint 15)"
-                value={termInput}
-                onChange={(e) => setTermInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddTerm()}
-                className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleAddTerm}
-                disabled={!termInput.trim()}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
+            <div className="space-y-2">
+              <Label htmlFor={termInputId} className="sr-only">
+                용어 입력
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  id={termInputId}
+                  type="text"
+                  placeholder="용어 입력 (예: Phoenix, Sprint 15)"
+                  value={termInput}
+                  onChange={(e) => setTermInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddTerm()}
+                  className="h-9 flex-1"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddTerm}
+                  disabled={!termInput.trim() || contextTerms.length >= 50}
+                  className="h-9 cursor-pointer px-3"
+                  aria-label="용어 추가"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Context Instructions */}
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <MessageSquare className="h-4 w-4" />
-              특별 지시사항 (선택)
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
+                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+              </div>
+              특별 지시사항
+              <span className="text-xs font-normal text-muted-foreground">(선택)</span>
             </CardTitle>
+            <CardDescription>
+              이번 회의록 생성에 특별히 적용할 지시사항을 자연어로 입력하세요
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
-            <p className="text-sm text-muted-foreground">
-              이번 회의록 생성에 특별히 적용할 지시사항을 자연어로 입력하세요.
-            </p>
-            <textarea
-              placeholder="예: 'OOO 이름이 나오는 얘기는 다 빼줘', '기술 용어는 영문으로 표기해줘'"
-              value={contextInstructions}
-              onChange={(e) => setContextInstructions(e.target.value)}
-              rows={3}
-              maxLength={1000}
-              className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-            <p className="text-xs text-muted-foreground text-right">
-              {contextInstructions.length}/1000
-            </p>
+          <CardContent className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor={instructionsInputId} className="sr-only">
+                특별 지시사항
+              </Label>
+              <textarea
+                id={instructionsInputId}
+                placeholder="예: 'OOO 이름이 나오는 얘기는 다 빼줘', '기술 용어는 영문으로 표기해줘'"
+                value={contextInstructions}
+                onChange={(e) => setContextInstructions(e.target.value)}
+                rows={3}
+                maxLength={1000}
+                className="w-full resize-none rounded-md border border-input bg-background px-3 py-2.5 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                회의록 생성 시 AI가 이 지시사항을 참고합니다
+              </p>
+              <p
+                className={cn(
+                  "text-xs tabular-nums",
+                  contextInstructions.length > 900 ? "text-destructive" : "text-muted-foreground",
+                )}
+              >
+                {contextInstructions.length}/1000
+              </p>
+            </div>
           </CardContent>
         </Card>
 
         {/* File Upload */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">녹음 파일</CardTitle>
+        <Card
+          className={cn(
+            "transition-all duration-300",
+            recording.file && "border-primary/40 bg-primary/5 shadow-sm",
+          )}
+        >
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <div
+                className={cn(
+                  "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
+                  recording.file ? "bg-primary/20" : "bg-muted",
+                )}
+              >
+                <svg
+                  className={cn(
+                    "h-4 w-4",
+                    recording.file ? "text-primary" : "text-muted-foreground",
+                  )}
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" x2="12" y1="19" y2="22" />
+                </svg>
+              </div>
+              녹음 파일
+              {recording.file && (
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                  준비됨
+                </span>
+              )}
+            </CardTitle>
+            <CardDescription>
+              회의 녹음 파일을 업로드해주세요 (mp3, wav, webm, m4a / 최대 100MB)
+            </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <FileUpload
               file={recording.file}
               onFileSelect={handleFileSelect}
@@ -788,13 +974,29 @@ export default function MeetingSetupPage() {
         </Card>
 
         {/* Start Button */}
-        <div className="flex justify-end">
+        <div className="flex flex-col items-end gap-3 pt-2">
+          {!recording.file && (
+            <p className="text-sm text-muted-foreground">녹음 파일을 업로드하면 시작할 수 있어요</p>
+          )}
           <Button
             size="lg"
             onClick={handleStartProcessing}
             disabled={!recording.file || isUploading}
+            className={cn(
+              "cursor-pointer px-8 transition-all duration-200",
+              recording.file &&
+                !isUploading &&
+                "shadow-lg shadow-primary/25 hover:shadow-primary/40",
+            )}
           >
-            {isUploading ? "업로드 중..." : "회의록 생성 시작"}
+            {isUploading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                업로드 중...
+              </>
+            ) : (
+              "회의록 생성 시작"
+            )}
           </Button>
         </div>
       </div>
@@ -808,7 +1010,10 @@ export default function MeetingSetupPage() {
       >
         <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>주간업무록 확인</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <LinkIcon className="h-5 w-5 text-primary" />
+              주간업무록 확인
+            </DialogTitle>
             <DialogDescription>Confluence에서 불러온 주간업무록입니다.</DialogDescription>
           </DialogHeader>
           {(weeklyReportPreview?.parsed_data as unknown as ParsedWeeklyData | undefined)
@@ -816,17 +1021,30 @@ export default function MeetingSetupPage() {
             <div className="space-y-4">
               {(weeklyReportPreview!.parsed_data as unknown as ParsedWeeklyData).team_members.map(
                 (member) => (
-                  <div key={member.name} className="rounded-lg border p-3">
-                    <h4 className="mb-2 font-semibold">{member.name}</h4>
+                  <div
+                    key={member.name}
+                    className="rounded-xl border border-border bg-card p-4 transition-colors hover:bg-accent/30"
+                  >
+                    <h4 className="mb-3 flex items-center gap-2 font-semibold">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-sm text-primary">
+                        {member.name.charAt(0)}
+                      </span>
+                      {member.name}
+                    </h4>
                     {member.categories.map((cat) => (
-                      <div key={cat.name} className="mb-2 ml-2">
-                        <p className="text-sm font-medium text-muted-foreground">{cat.name}</p>
-                        <ul className="ml-4 list-disc text-sm">
+                      <div key={cat.name} className="mb-3 ml-2 last:mb-0">
+                        <p className="mb-1.5 text-sm font-medium text-muted-foreground">
+                          {cat.name}
+                        </p>
+                        <ul className="space-y-1.5 text-sm">
                           {cat.tasks.map((task, taskIdx) => (
-                            <li key={`${cat.name}-${taskIdx}`}>
+                            <li
+                              key={`${cat.name}-${taskIdx}`}
+                              className="flex items-start gap-2 pl-2"
+                            >
                               <span
                                 className={cn(
-                                  "mr-1 rounded px-1 py-0.5 text-xs font-medium",
+                                  "mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs font-medium",
                                   task.status === "완료" && "bg-green-100 text-green-700",
                                   task.status === "진행" && "bg-blue-100 text-blue-700",
                                   task.status === "예정" && "bg-gray-100 text-gray-600",
@@ -834,7 +1052,7 @@ export default function MeetingSetupPage() {
                               >
                                 {task.status}
                               </span>
-                              {task.title}
+                              <span className="leading-relaxed">{task.title}</span>
                             </li>
                           ))}
                         </ul>
@@ -845,8 +1063,10 @@ export default function MeetingSetupPage() {
               )}
             </div>
           )}
-          <DialogFooter>
-            <Button onClick={() => setWeeklyReportPreview(null)}>확인</Button>
+          <DialogFooter className="mt-4">
+            <Button onClick={() => setWeeklyReportPreview(null)} className="cursor-pointer">
+              확인
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
