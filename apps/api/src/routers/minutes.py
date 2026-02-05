@@ -3,7 +3,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -127,8 +127,22 @@ async def generate_minutes_task(meeting_id: UUID) -> None:
                 transcript_lines.append(f"[{speaker}] {t.text}")
             transcript_text = "\n".join(transcript_lines)
 
-            # Get attendees
-            attendees = [m.name for m in meeting.team.members if m.is_active]
+            # Get attendees - use meeting.attendees if explicitly set (not None),
+            # otherwise fall back to all active team members
+            if meeting.attendees is not None and len(meeting.attendees) > 0:
+                attendees = meeting.attendees
+                logger.info(
+                    "Using meeting-specific attendees",
+                    meeting_id=str(meeting_id),
+                    attendees=attendees,
+                )
+            else:
+                attendees = [m.name for m in meeting.team.members if m.is_active]
+                logger.info(
+                    "Using all active team members as attendees",
+                    meeting_id=str(meeting_id),
+                    attendees=attendees,
+                )
 
             # Load team vocabulary for AI prompt context
             vocab_service = VocabularyService()
@@ -170,6 +184,8 @@ async def generate_minutes_task(meeting_id: UUID) -> None:
                     agenda_items=agenda_items,
                     vocabulary_prompt=vocabulary_prompt,
                     location=meeting.location,
+                    context_terms=meeting.context_terms,
+                    context_instructions=meeting.context_instructions,
                 )
 
                 # Store minutes with corrections and metadata
@@ -193,14 +209,8 @@ async def generate_minutes_task(meeting_id: UUID) -> None:
                 db.add(minutes)
 
                 # Update meeting title if AI suggested one and current title is auto-generated
-                if general_result.suggested_title and meeting.title.startswith("일반회의 ("):
-                    # Format: "suggested_title (yy/m/d)"
-                    date_str = (
-                        f"{meeting.meeting_date.year % 100}/"
-                        f"{meeting.meeting_date.month}/"
-                        f"{meeting.meeting_date.day}"
-                    )
-                    meeting.title = f"{general_result.suggested_title} ({date_str})"
+                if general_result.suggested_title and meeting.title == "일반회의":
+                    meeting.title = general_result.suggested_title
                     logger.info(
                         "Meeting title updated from AI suggestion",
                         meeting_id=str(meeting_id),
@@ -290,11 +300,15 @@ async def start_minutes_generation(
     meeting_id: UUID,
     background_tasks: BackgroundTasks,
     db: DB,
+    regenerate: bool = Query(False, description="Force regenerate even if minutes exist"),
 ) -> dict:
     """Start meeting minutes generation.
 
     Requires transcription to be completed first.
     Uses GPT to generate minutes from transcript and weekly report.
+
+    Args:
+        regenerate: If True, delete existing minutes and regenerate.
     """
     # Get meeting
     result = await db.execute(
@@ -319,14 +333,22 @@ async def start_minutes_generation(
             detail=f"Transcription must be completed first. Current status: {status_val}",
         )
 
-    # If already has minutes, return existing
-    if meeting.minutes:
+    # If already has minutes and not regenerating, return existing
+    if meeting.minutes and not regenerate:
         return {
             "meeting_id": meeting_id,
             "status": status_val,
             "has_minutes": True,
             "error_message": None,
         }
+
+    # If regenerating, delete existing minutes
+    if meeting.minutes and regenerate:
+        logger.info("Regenerating minutes, deleting existing", meeting_id=str(meeting_id))
+        await db.delete(meeting.minutes)
+        await db.commit()
+        # Refresh meeting to clear the relationship
+        await db.refresh(meeting)
 
     # If already generating, don't start again
     if status_val == "generating_minutes":
@@ -436,7 +458,13 @@ async def publish_minutes_to_confluence(
 
     # Get the content to publish (edited if available, otherwise original)
     content = meeting.minutes.edited_content or meeting.minutes.content_markdown
-    title = f"{meeting.meeting_date.isoformat()} {meeting.title} 회의록"
+    # Format: "회의제목 (yy/m/d) 회의록"
+    date_str = (
+        f"{meeting.meeting_date.year % 100}/"
+        f"{meeting.meeting_date.month}/"
+        f"{meeting.meeting_date.day}"
+    )
+    title = f"{meeting.title} ({date_str})"
 
     # Use team-specific Confluence settings if available (P2: Multi-team support)
     confluence = ConfluenceService.from_team(meeting.team)
@@ -458,6 +486,10 @@ async def publish_minutes_to_confluence(
                 body_html=html_content,
                 version=current_version,
             )
+
+            # Ensure "회의록" label exists (V1 API handles duplicates gracefully)
+            await confluence.add_labels(meeting.confluence_page_id, ["회의록"])
+
             page_result = {
                 "id": page["id"],
                 "url": meeting.confluence_page_url,  # URL doesn't change
@@ -470,10 +502,11 @@ async def publish_minutes_to_confluence(
                 new_version=current_version + 1,
             )
         else:
-            # First publish: Create new page
+            # First publish: Create new page with "회의록" label
             page_result = await confluence.upload_meeting_minutes(
                 title=title,
                 markdown_content=content,
+                labels=["회의록"],
             )
             # Update meeting with Confluence info
             meeting.confluence_page_id = page_result["id"]
@@ -482,6 +515,7 @@ async def publish_minutes_to_confluence(
                 "Minutes published to Confluence",
                 meeting_id=str(meeting_id),
                 page_id=page_result["id"],
+                labels=page_result.get("labels", []),
             )
     except ConfluenceError as e:
         raise HTTPException(

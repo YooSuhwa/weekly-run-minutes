@@ -118,12 +118,15 @@ class MinutesGeneratorService:
 {terms_str}
 """
 
-        # Build context instructions section
+        # Build context instructions section (emphasize more strongly)
         context_instructions_section = ""
         if context_instructions:
             context_instructions_section = f"""
-## 특별 지시사항
-{context_instructions}
+## ⚠️ 특별 지시사항 (최우선 - 반드시 따라주세요!)
+
+다음 지시사항은 다른 모든 규칙보다 우선합니다. 반드시 회의록에 반영하세요:
+
+> {context_instructions}
 """
 
         # Build location line if provided
@@ -131,25 +134,31 @@ class MinutesGeneratorService:
 
         # Build user prompt with context
         user_prompt = f"""다음 정보를 기반으로 회의록을 작성해주세요.
-
+{context_instructions_section}
 ## 회의 정보
 - 날짜: {meeting_date}
 - 팀: {team_name}
 - 참석자: {", ".join(attendees)}{location_line}
-{vocabulary_section}{context_terms_section}{context_instructions_section}
+
+**중요**: 참석자는 위에 명시된 사람들만 포함하세요. 임의로 추가하지 마세요.
+{vocabulary_section}{context_terms_section}
 ## 주간업무록 (각 팀원의 업무 현황)
 {weekly_report_summary}
 
 ## 회의 녹취록
 {transcript_text}
 
+---
+
 위 내용을 바탕으로 회의록을 마크다운 형식으로 작성해주세요.
 1. 각 팀원의 발표 내용과 주간업무록의 내용을 매칭하여 정리
 2. 업무 상태([완료], [진행], [예정])를 명확히 표시
 3. 주간업무록에 있지만 회의에서 언급되지 않은 항목은 "※ 언급되지 않음"으로 표시
 4. 녹취록의 비표준 용어를 용어 사전/세션 용어의 공식 용어로 교정
-5. 특별 지시사항이 있으면 반드시 따라주세요
-6. 마지막에 교정 목록을 JSON으로 첨부 (시스템 프롬프트의 형식 준수)
+5. 제목/소제목 사이에 빈 줄을 넣어 가독성을 높여주세요
+6. 팀원별 업무 보고 / 결정사항 / 액션아이템 사이에 --- 구분선을 넣어주세요
+7. 마지막에 교정 목록을 JSON으로 첨부 (시스템 프롬프트의 형식 준수)
+{"8. ⚠️ 특별 지시사항이 있으면 반드시 최우선으로 따라주세요!" if context_instructions else ""}
 """
 
         try:

@@ -59,6 +59,7 @@ export * from './restoreResponse';
 export * from './rootGet200';
 export * from './serviceStatus';
 export * from './serviceStatusStatus';
+export * from './startMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPostParams';
 export * from './teamAuthRequest';
 export * from './teamAuthResponse';
 export * from './teamCreate';

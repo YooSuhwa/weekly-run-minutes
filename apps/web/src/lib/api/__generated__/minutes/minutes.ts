@@ -31,7 +31,8 @@ import type {
   MinutesGenerationStatusResponse,
   MinutesResponse,
   MinutesUpdateRequest,
-  PublishResponse
+  PublishResponse,
+  StartMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPostParams
 } from '.././schemas';
 
 import { apiClient } from '../../client';
@@ -44,16 +45,21 @@ import { apiClient } from '../../client';
 
 Requires transcription to be completed first.
 Uses GPT to generate minutes from transcript and weekly report.
+
+Args:
+    regenerate: If True, delete existing minutes and regenerate.
  * @summary Start Minutes Generation
  */
 export const startMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost = (
     meetingId: string,
+    params?: StartMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPostParams,
  signal?: AbortSignal
 ) => {
       
       
       return apiClient<MinutesGenerationStatusResponse>(
-      {url: `/api/v1/minutes/meetings/${meetingId}/generate-minutes`, method: 'POST', signal
+      {url: `/api/v1/minutes/meetings/${meetingId}/generate-minutes`, method: 'POST',
+        params, signal
     },
       );
     }
@@ -61,8 +67,8 @@ export const startMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesP
 
 
 export const getStartMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPostMutationOptions = <TError = HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost>>, TError,{meetingId: string}, TContext>, }
-): UseMutationOptions<Awaited<ReturnType<typeof startMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost>>, TError,{meetingId: string}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost>>, TError,{meetingId: string;params?: StartMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPostParams}, TContext>, }
+): UseMutationOptions<Awaited<ReturnType<typeof startMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost>>, TError,{meetingId: string;params?: StartMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPostParams}, TContext> => {
 
 const mutationKey = ['startMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost'];
 const {mutation: mutationOptions} = options ?
@@ -74,10 +80,10 @@ const {mutation: mutationOptions} = options ?
       
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost>>, {meetingId: string}> = (props) => {
-          const {meetingId} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost>>, {meetingId: string;params?: StartMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPostParams}> = (props) => {
+          const {meetingId,params} = props ?? {};
 
-          return  startMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost(meetingId,)
+          return  startMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost(meetingId,params,)
         }
 
 
@@ -95,11 +101,11 @@ const {mutation: mutationOptions} = options ?
  * @summary Start Minutes Generation
  */
 export const useStartMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost = <TError = HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost>>, TError,{meetingId: string}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost>>, TError,{meetingId: string;params?: StartMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPostParams}, TContext>, }
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof startMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost>>,
         TError,
-        {meetingId: string},
+        {meetingId: string;params?: StartMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPostParams},
         TContext
       > => {
       return useMutation(getStartMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPostMutationOptions(options), queryClient);

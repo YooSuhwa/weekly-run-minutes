@@ -394,27 +394,30 @@ export default function MeetingSetupPage() {
     setIsUploading(true);
     setRecording({ ...recording, uploadStatus: "uploading", uploadProgress: 0 });
 
-    // Save meeting metadata (agenda items, context terms, context instructions)
+    // Save meeting metadata (attendees, agenda items, context terms, context instructions)
     const hasAgendaItems = isGeneralMeeting && agendaItems.some((item) => item.title.trim());
     const hasContextTerms = contextTerms.length > 0;
     const hasContextInstructions = contextInstructions.trim().length > 0;
+    // Always save attendees if they exist (to track selected participants)
+    const attendeeNames = attendees.map((a) => a.name);
 
-    if (hasAgendaItems || hasContextTerms || hasContextInstructions) {
-      try {
-        await updateMeeting.mutateAsync({
-          meetingId,
-          data: {
-            ...(hasAgendaItems && {
-              agenda_items: agendaItems.filter((item) => item.title.trim()),
-            }),
-            ...(hasContextTerms && { context_terms: contextTerms }),
-            ...(hasContextInstructions && { context_instructions: contextInstructions.trim() }),
-          },
-        });
-      } catch (error) {
-        // Continue even if metadata save fails
-        console.error("Failed to save meeting metadata:", error);
-      }
+    // Always update meeting to save attendees and other metadata
+    try {
+      await updateMeeting.mutateAsync({
+        meetingId,
+        data: {
+          // Always include attendees (selected participants)
+          attendees: attendeeNames,
+          ...(hasAgendaItems && {
+            agenda_items: agendaItems.filter((item) => item.title.trim()),
+          }),
+          ...(hasContextTerms && { context_terms: contextTerms }),
+          ...(hasContextInstructions && { context_instructions: contextInstructions.trim() }),
+        },
+      });
+    } catch (error) {
+      // Continue even if metadata save fails
+      console.error("Failed to save meeting metadata:", error);
     }
 
     uploadRecording.mutate({

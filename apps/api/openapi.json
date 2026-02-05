@@ -1838,7 +1838,7 @@
           "minutes"
         ],
         "summary": "Start Minutes Generation",
-        "description": "Start meeting minutes generation.\n\nRequires transcription to be completed first.\nUses GPT to generate minutes from transcript and weekly report.",
+        "description": "Start meeting minutes generation.\n\nRequires transcription to be completed first.\nUses GPT to generate minutes from transcript and weekly report.\n\nArgs:\n    regenerate: If True, delete existing minutes and regenerate.",
         "operationId": "start_minutes_generation_api_v1_minutes_meetings__meeting_id__generate_minutes_post",
         "parameters": [
           {
@@ -1850,6 +1850,18 @@
               "format": "uuid",
               "title": "Meeting Id"
             }
+          },
+          {
+            "name": "regenerate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Force regenerate even if minutes exist",
+              "default": false,
+              "title": "Regenerate"
+            },
+            "description": "Force regenerate even if minutes exist"
           }
         ],
         "responses": {
@@ -3334,6 +3346,20 @@
               }
             ],
             "title": "Context Instructions"
+          },
+          "attendees": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attendees"
           }
         },
         "type": "object",
@@ -3608,6 +3634,20 @@
               }
             ],
             "title": "Context Instructions"
+          },
+          "attendees": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attendees"
           }
         },
         "type": "object",
@@ -3627,7 +3667,8 @@
           "confluence_page_url",
           "agenda_items",
           "context_terms",
-          "context_instructions"
+          "context_instructions",
+          "attendees"
         ],
         "title": "MeetingResponse",
         "description": "Schema for meeting response."
@@ -3789,6 +3830,20 @@
               }
             ],
             "title": "Context Instructions"
+          },
+          "attendees": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attendees"
           }
         },
         "type": "object",
@@ -3920,6 +3975,20 @@
             ],
             "title": "Context Instructions"
           },
+          "attendees": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attendees"
+          },
           "recording": {
             "anyOf": [
               {
@@ -3969,6 +4038,7 @@
           "agenda_items",
           "context_terms",
           "context_instructions",
+          "attendees",
           "recording",
           "weekly_report",
           "minutes"
@@ -4960,13 +5030,22 @@
             "type": "string",
             "maxLength": 200,
             "minLength": 1,
-            "title": "Term"
+            "title": "Term",
+            "description": "올바른 용어"
           },
           "correction": {
-            "type": "string",
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Correction"
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correction",
+            "description": "발음 힌트 (선택)"
           },
           "category": {
             "$ref": "#/components/schemas/VocabularyCategory",
@@ -4975,8 +5054,7 @@
         },
         "type": "object",
         "required": [
-          "term",
-          "correction"
+          "term"
         ],
         "title": "VocabularyBulkImportItem",
         "description": "Schema for a single item in bulk import."
@@ -5025,13 +5103,22 @@
             "type": "string",
             "maxLength": 200,
             "minLength": 1,
-            "title": "Term"
+            "title": "Term",
+            "description": "올바른 용어"
           },
           "correction": {
-            "type": "string",
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Correction"
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correction",
+            "description": "발음 힌트 (선택)"
           },
           "category": {
             "$ref": "#/components/schemas/VocabularyCategory",
@@ -5040,11 +5127,10 @@
         },
         "type": "object",
         "required": [
-          "term",
-          "correction"
+          "term"
         ],
         "title": "VocabularyCreate",
-        "description": "Schema for creating a vocabulary term."
+        "description": "Schema for creating a vocabulary term.\n\nterm: 올바른 용어 (AI가 정확히 인식해야 할 단어)\ncorrection: 비슷하게 들릴 수 있는 발음/표기 힌트 (선택, 미입력시 term과 동일)"
       },
       "VocabularyResponse": {
         "properties": {
