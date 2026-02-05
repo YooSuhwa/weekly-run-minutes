@@ -18,6 +18,7 @@ export interface MeetingResponse {
   team_id: string;
   meeting_date: string;
   title: string;
+  location: string | null;
   status: MeetingStatus;
   meeting_mode: string;
   meeting_type: string;
@@ -25,4 +26,6 @@ export interface MeetingResponse {
   confluence_page_id: string | null;
   confluence_page_url: string | null;
   agenda_items: AgendaItem[] | null;
+  context_terms: string[] | null;
+  context_instructions: string | null;
 }

@@ -1,10 +1,15 @@
 """Confluence API v2 integration service."""
 
+from typing import TYPE_CHECKING
+
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.lib.config import settings
 from src.lib.logging import get_logger
+
+if TYPE_CHECKING:
+    from src.models import Team
 
 logger = get_logger(__name__)
 
@@ -44,22 +49,27 @@ class ConfluenceService:
         self.space_id = space_id or settings.CONFLUENCE_SPACE_ID
 
     @classmethod
-    def from_team(
-        cls,
-        confluence_base_url: str | None,
-        confluence_username: str | None,
-        confluence_token: str | None,
-        confluence_space_key: str | None,
-    ) -> "ConfluenceService":
+    def from_team(cls, team: "Team | None") -> "ConfluenceService":
         """Create a ConfluenceService from team-specific settings.
 
-        Falls back to global settings for any missing team settings.
+        Reads settings from team.settings and falls back to global settings
+        for any missing team settings.
+
+        Args:
+            team: Team object with settings relationship loaded, or None
+
+        Returns:
+            ConfluenceService configured with team or global settings
         """
+        if team is None or team.settings is None:
+            return cls()
+
+        settings_obj = team.settings
         return cls(
-            base_url=confluence_base_url,
-            username=confluence_username,
-            token=confluence_token,
-            space_id=confluence_space_key,
+            base_url=settings_obj.confluence_base_url,
+            username=settings_obj.confluence_username,
+            token=settings_obj.confluence_token,
+            space_id=settings_obj.confluence_space_key,
         )
 
     def _get_headers(self) -> dict[str, str]:
@@ -159,7 +169,7 @@ class ConfluenceService:
         return {
             "id": page["id"],
             "title": page.get("title", ""),
-            "url": f"{self.base_url}/pages/{page['id']}",
+            "url": f"{self.base_url}/spaces/{self.space_id}/pages/{page['id']}",
             "html_content": page.get("body", {}).get("storage", {}).get("value", ""),
             "version": page.get("version", {}).get("number", 1),
         }
@@ -192,7 +202,7 @@ class ConfluenceService:
             {
                 "id": page["id"],
                 "title": page.get("title", ""),
-                "url": f"{self.base_url}/pages/{page['id']}",
+                "url": f"{self.base_url}/spaces/{self.space_id}/pages/{page['id']}",
             }
             for page in pages
         ]
@@ -342,7 +352,7 @@ class ConfluenceService:
 
         return {
             "id": page["id"],
-            "url": f"{self.base_url}/pages/{page['id']}",
+            "url": f"{self.base_url}/spaces/{self.space_id}/pages/{page['id']}",
             "title": page["title"],
         }
 
@@ -350,12 +360,19 @@ class ConfluenceService:
         """Convert markdown to Confluence storage format HTML.
 
         Uses the markdown library for proper conversion.
+        Handles nested list indentation (2-space to 4-space conversion).
         """
+        import re
+
         import markdown
+
+        # Pre-process: Convert 2-space list indentation to 4-space for nested lists
+        # The markdown library requires 4-space indentation for nested lists
+        processed_content = self._normalize_list_indentation(markdown_content)
 
         # Convert markdown to HTML with common extensions
         html = markdown.markdown(
-            markdown_content,
+            processed_content,
             extensions=[
                 "tables",
                 "fenced_code",
@@ -364,3 +381,28 @@ class ConfluenceService:
         )
 
         return html
+
+    def _normalize_list_indentation(self, content: str) -> str:
+        """Normalize list indentation from 2-space to 4-space.
+
+        The markdown library requires 4-space indentation for nested lists,
+        but many editors use 2-space indentation.
+        """
+        import re
+
+        lines = content.split("\n")
+        result = []
+
+        for line in lines:
+            # Match leading spaces followed by list marker (-, *, or number.)
+            match = re.match(r"^( +)([-*]|\d+\.)\s", line)
+            if match:
+                spaces = match.group(1)
+                # Convert 2-space indentation levels to 4-space
+                # e.g., 2 spaces -> 4 spaces, 4 spaces -> 8 spaces
+                indent_level = len(spaces) // 2
+                new_spaces = "    " * indent_level
+                line = new_spaces + line[len(spaces) :]
+            result.append(line)
+
+        return "\n".join(result)

@@ -139,6 +139,11 @@ export function useListMeetingsApiV1MeetingsGet<TData = Awaited<ReturnType<typeo
 
 P2 Feature: Supports meeting_type for WEEKLY_REPORT or GENERAL meetings.
 GENERAL meetings can have optional agenda_items.
+
+If meeting_date is not provided, defaults to today.
+If title is not provided, defaults to:
+- Weekly report: "주간회의 (yy/m/d)"
+- General: "일반회의 (yy/m/d)" (can be updated later by AI)
  * @summary Create Meeting
  */
 export const createMeetingApiV1MeetingsPost = (

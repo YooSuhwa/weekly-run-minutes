@@ -13,5 +13,8 @@ import type { AgendaItem } from './agendaItem';
 export interface MeetingUpdate {
   title?: string | null;
   meeting_date?: string | null;
+  location?: string | null;
   agenda_items?: AgendaItem[] | null;
+  context_terms?: string[] | null;
+  context_instructions?: string | null;
 }

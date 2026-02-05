@@ -12,6 +12,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.lib.config import settings
 from src.lib.logging import get_logger
+from src.prompts import load_prompt
 from src.services.minutes_generator import CorrectionItem, MinutesGenerationError
 
 logger = get_logger(__name__)
@@ -34,6 +35,7 @@ class GeneralMinutesResult:
     content_markdown: str
     ai_model: str
     prompt_version: str
+    suggested_title: str | None = None  # AI-generated title from meeting content
     corrections: list[CorrectionItem] = field(default_factory=list)
     action_items: list[dict] = field(default_factory=list)
     decisions: list[str] = field(default_factory=list)
@@ -43,71 +45,10 @@ class GeneralMinutesResult:
 # Current prompt version for tracking
 GENERAL_PROMPT_VERSION = "1.0.0"
 
-# System prompt for general meeting minutes generation
-GENERAL_SYSTEM_PROMPT = """당신은 회의록을 작성하는 전문 비서입니다.
-제공된 회의 녹취록과 아젠다를 기반으로 회의록을 작성합니다.
 
-회의록 작성 규칙:
-1. 마크다운 형식으로 작성합니다.
-2. 아젠다가 있으면 각 아젠다 항목별로 논의 내용을 정리합니다.
-3. 아젠다가 없으면 논의된 주제별로 내용을 정리합니다.
-4. 화자별로 주요 발언을 요약합니다.
-5. 중요한 결정사항은 별도로 정리합니다.
-6. 액션아이템(담당자, 기한)은 별도로 정리합니다.
-7. 간결하고 명확하게 작성합니다.
-8. 불필요한 인사말이나 잡담은 제외합니다.
-
-회의록 구조:
-# [회의 제목] 회의록
-
-## 참석자
-- 참석자 목록
-
-## 아젠다 (또는 논의 주제)
-
-### [아젠다/주제 1]
-- 논의 내용 요약
-- 주요 의견
-
-### [아젠다/주제 2]
-...
-
-## 주요 결정사항
-- 결정 내용 (있는 경우에만)
-
-## 액션아이템
-- [ ] 담당자: 액션 내용 (기한: YYYY-MM-DD) (있는 경우에만)
-
-## 기타 논의사항
-- 논의 내용 (있는 경우에만)
-
-응답 형식:
-회의록 마크다운을 작성한 후, 마지막에 다음 JSON 블록을 추가합니다:
-
-```json:metadata
-{
-  "corrections": [
-    {"original": "교정 전 텍스트", "corrected": "교정 후 텍스트", "category": "terminology", "paragraph_index": 0, "start_offset": 10, "end_offset": 20}
-  ],
-  "action_items": [
-    {"assignee": "담당자", "task": "할 일", "due_date": "YYYY-MM-DD 또는 null"}
-  ],
-  "decisions": [
-    "결정 사항 1",
-    "결정 사항 2"
-  ],
-  "topics_summary": [
-    {"topic": "주제명", "summary": "요약", "speakers": ["화자1", "화자2"]}
-  ]
-}
-```
-
-각 필드 설명:
-- "corrections": 용어/포맷팅/문법 교정 목록 (위치 정보 포함)
-- "action_items": 액션아이템 목록
-- "decisions": 주요 결정사항 목록
-- "topics_summary": 주제별 요약 (화자 정보 포함)
-"""
+def get_general_system_prompt() -> str:
+    """Load the general meeting system prompt from file."""
+    return load_prompt("general_meeting_system")
 
 
 class GeneralMeetingService:
@@ -135,6 +76,7 @@ class GeneralMeetingService:
         attendees: list[str],
         agenda_items: list[AgendaItemData] | None = None,
         vocabulary_prompt: str | None = None,
+        location: str | None = None,
     ) -> GeneralMinutesResult:
         """Generate meeting minutes from transcript for general meetings.
 
@@ -146,6 +88,7 @@ class GeneralMeetingService:
             attendees: List of attendee names
             agenda_items: Optional list of agenda items
             vocabulary_prompt: Formatted vocabulary terms for AI correction
+            location: Optional meeting location
 
         Returns:
             GeneralMinutesResult with generated markdown and extracted metadata
@@ -178,6 +121,9 @@ class GeneralMeetingService:
         if vocabulary_prompt:
             vocabulary_section = f"\n{vocabulary_prompt}\n"
 
+        # Build location section if provided
+        location_line = f"\n- 장소: {location}" if location else ""
+
         # Build user prompt
         user_prompt = f"""다음 정보를 기반으로 회의록을 작성해주세요.
 
@@ -185,7 +131,7 @@ class GeneralMeetingService:
 - 날짜: {meeting_date}
 - 회의 제목: {meeting_title}
 - 팀: {team_name}
-- 참석자: {", ".join(attendees)}
+- 참석자: {", ".join(attendees)}{location_line}
 {vocabulary_section}
 {agenda_section}
 
@@ -203,7 +149,7 @@ class GeneralMeetingService:
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": GENERAL_SYSTEM_PROMPT},
+                    {"role": "system", "content": get_general_system_prompt()},
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.3,
@@ -234,6 +180,7 @@ class GeneralMeetingService:
                 content_markdown=content,
                 ai_model=self.model,
                 prompt_version=GENERAL_PROMPT_VERSION,
+                suggested_title=metadata.get("suggested_title"),
                 corrections=corrections,
                 action_items=metadata.get("action_items", []),
                 decisions=metadata.get("decisions", []),
@@ -259,6 +206,7 @@ class GeneralMeetingService:
         import re
 
         metadata: dict = {
+            "suggested_title": None,
             "corrections": [],
             "action_items": [],
             "decisions": [],
@@ -278,6 +226,7 @@ class GeneralMeetingService:
                 parsed = json.loads(json_str)
                 if isinstance(parsed, dict):
                     metadata = {
+                        "suggested_title": parsed.get("suggested_title"),
                         "corrections": parsed.get("corrections", []),
                         "action_items": parsed.get("action_items", []),
                         "decisions": parsed.get("decisions", []),

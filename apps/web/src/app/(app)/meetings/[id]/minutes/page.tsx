@@ -1,12 +1,21 @@
 "use client";
 
 import { useAtom } from "jotai";
-import { Download, FileText, Send } from "lucide-react";
+import { Check, CheckCircle, Download, ExternalLink, FileText, Pencil, RefreshCw, Send, X, AlertCircle, MapPin, CalendarDays } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { confluenceAtom } from "@/atoms/confluence";
 import { type CorrectionItem, minutesAtom } from "@/atoms/minutes";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { Weeky } from "@/components/weeky/weeky";
 import {
@@ -14,11 +23,22 @@ import {
   usePublishMinutesToConfluenceApiV1MinutesMeetingsMeetingIdPublishPost,
   useUpdateMeetingMinutesApiV1MinutesMeetingsMeetingIdMinutesPut,
 } from "@/lib/api/__generated__/minutes/minutes";
-import { useGetMeetingApiV1MeetingsMeetingIdGet } from "@/lib/api/__generated__/meetings/meetings";
+import {
+  useGetMeetingApiV1MeetingsMeetingIdGet,
+  useUpdateMeetingApiV1MeetingsMeetingIdPut,
+} from "@/lib/api/__generated__/meetings/meetings";
 import { CelebrationModal } from "@/components/meeting/celebration-modal";
 import { TrashPanel } from "@/components/meeting/trash-panel";
 import dynamic from "next/dynamic";
 import { CorrectionPanel } from "./correction-panel";
+
+// Generate Confluence URL from page ID
+const CONFLUENCE_BASE_URL = "https://hancom.atlassian.net/wiki/spaces/ProductTech/pages";
+
+function getConfluenceUrl(pageId: string | undefined | null): string | undefined {
+  if (!pageId) return undefined;
+  return `${CONFLUENCE_BASE_URL}/${pageId}`;
+}
 
 const MinutesEditor = dynamic(
   () => import("./minutes-editor").then((m) => ({ default: m.MinutesEditor })),
@@ -44,8 +64,17 @@ export default function MinutesPage() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
   const [activeCorrectionIndex, setActiveCorrectionIndex] = useState<number | null>(null);
+  // Edit mode for published minutes
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [originalContent, setOriginalContent] = useState<string>("");
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const updateMutateRef = useRef<typeof updateMinutes.mutate>(null);
+
+  // Title editing state
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editedTitle, setEditedTitle] = useState<string>("");
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch meeting data to check publish status
   const { data: meetingData, refetch: refetchMeeting } =
@@ -72,6 +101,7 @@ export default function MinutesPage() {
           startOffset: c.start_offset ?? null,
           endOffset: c.end_offset ?? null,
         })),
+        confluenceSynced: minutesData.confluence_synced,
       }));
     } else if (minutesError) {
       // Demo content on error
@@ -106,6 +136,8 @@ export default function MinutesPage() {
           ...prev,
           saveStatus: "saved",
           lastSavedAt: new Date().toISOString(),
+          // Mark as out of sync when content is saved after publish
+          confluenceSynced: isPublished ? false : prev.confluenceSynced,
         }));
       },
       onError: () => {
@@ -115,6 +147,20 @@ export default function MinutesPage() {
   });
 
   updateMutateRef.current = updateMinutes.mutate;
+
+  // Update meeting mutation (for title)
+  const updateMeeting = useUpdateMeetingApiV1MeetingsMeetingIdPut({
+    mutation: {
+      onSuccess: () => {
+        refetchMeeting();
+        setIsEditingTitle(false);
+        toast.success("제목이 저장되었습니다");
+      },
+      onError: () => {
+        toast.error("제목 저장에 실패했습니다");
+      },
+    },
+  });
 
   // Publish mutation
   const publishMinutes = usePublishMinutesToConfluenceApiV1MinutesMeetingsMeetingIdPublishPost({
@@ -129,6 +175,8 @@ export default function MinutesPage() {
             url: data.confluence_page_url,
           },
         }));
+        // Mark as synced with Confluence
+        setMinutes((prev) => ({ ...prev, confluenceSynced: true }));
         // 4번: 게시 후 meeting 데이터 refetch하여 상태 동기화
         refetchMeeting();
         // Show celebration modal
@@ -149,9 +197,12 @@ export default function MinutesPage() {
     },
   });
 
-  // Auto-save every 30 seconds (6번: 게시 완료 시 자동 저장 비활성화)
+  // Auto-save every 30 seconds
+  // Disabled for published minutes (requires explicit save via edit mode)
   useEffect(() => {
-    if (!minutes.isEdited || isPublished) return;
+    if (!minutes.isEdited) return;
+    // Skip auto-save for published minutes - they need explicit save
+    if (isPublished) return;
 
     if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
 
@@ -208,11 +259,108 @@ export default function MinutesPage() {
     setActiveCorrectionIndex(index >= 0 ? index : null);
   }, []);
 
+  // Enter edit mode for published minutes
+  const handleStartEdit = useCallback(() => {
+    setOriginalContent(minutes.content);
+    setIsEditMode(true);
+  }, [minutes.content]);
+
+  // Request to finish editing - show confirmation dialog
+  const handleFinishEditRequest = useCallback(() => {
+    setShowSaveConfirm(true);
+  }, []);
+
+  // Confirm save and exit edit mode
+  const handleConfirmSave = useCallback(() => {
+    setMinutes((prev) => ({ ...prev, saveStatus: "saving" }));
+    updateMutateRef.current?.({
+      meetingId,
+      data: { content_markdown: minutes.content },
+    });
+    setIsEditMode(false);
+    setShowSaveConfirm(false);
+    toast.success("저장되었습니다");
+  }, [meetingId, minutes.content, setMinutes, toast]);
+
+  // Cancel edit and rollback to original content
+  const handleCancelEdit = useCallback(() => {
+    setMinutes((prev) => ({
+      ...prev,
+      content: originalContent,
+      isEdited: false,
+      saveStatus: "idle",
+    }));
+    setIsEditMode(false);
+    setShowSaveConfirm(false);
+    toast.info("수정이 취소되었습니다");
+  }, [originalContent, setMinutes, toast]);
+
+  // Title editing handlers
+  const handleStartEditTitle = useCallback(() => {
+    setEditedTitle(meetingData?.title || "");
+    setIsEditingTitle(true);
+    // Focus on next tick after input is rendered
+    setTimeout(() => titleInputRef.current?.focus(), 0);
+  }, [meetingData?.title]);
+
+  const handleSaveTitle = useCallback(() => {
+    if (!editedTitle.trim()) {
+      toast.error("제목을 입력해주세요");
+      return;
+    }
+    updateMeeting.mutate({
+      meetingId,
+      data: { title: editedTitle.trim() },
+    });
+  }, [editedTitle, meetingId, toast, updateMeeting]);
+
+  const handleCancelEditTitle = useCallback(() => {
+    setIsEditingTitle(false);
+    setEditedTitle("");
+  }, []);
+
+  const handleTitleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleSaveTitle();
+      } else if (e.key === "Escape") {
+        handleCancelEditTitle();
+      }
+    },
+    [handleSaveTitle, handleCancelEditTitle],
+  );
+
+  // Format date for display
+  const formatDisplayDate = (dateStr: string | undefined) => {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    return `${d.getFullYear() % 100}/${d.getMonth() + 1}/${d.getDate()}`;
+  };
+
   return (
     <>
+      {/* Save confirmation dialog for published minutes */}
+      <Dialog open={showSaveConfirm} onOpenChange={setShowSaveConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>수정 내용을 저장하시겠습니까?</DialogTitle>
+            <DialogDescription>
+              저장하면 Confluence와 동기화가 해제됩니다. 재게시하면 변경 사항이 반영됩니다.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCancelEdit}>
+              취소 (되돌리기)
+            </Button>
+            <Button onClick={handleConfirmSave}>저장</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <CelebrationModal
         isOpen={showCelebration}
-        confluenceUrl={confluence.publishedPage?.url}
+        confluenceUrl={getConfluenceUrl(meetingData?.confluence_page_id)}
         onClose={() => setShowCelebration(false)}
       />
       <div className="mx-auto max-w-6xl px-4 py-8">
@@ -231,39 +379,165 @@ export default function MinutesPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* 6번: 게시 완료 시 저장 버튼 비활성화 */}
-          <Button variant="outline" size="sm" onClick={handleSaveDraft} disabled={isPublished}>
-            <FileText className="h-4 w-4" />
-            저장
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleDownload}>
-            <Download className="h-4 w-4" />
-            MD 다운로드
-          </Button>
-          <Button
-            size="sm"
-            onClick={handlePublish}
-            disabled={isPublishing || isPublished}
-          >
-            <Send className="h-4 w-4" />
-            {isPublished ? "게시 완료" : "Confluence 게시"}
-          </Button>
+          {/* Sync status badge - only show when not synced */}
+          {isPublished && !isEditMode && !minutes.confluenceSynced && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+              <AlertCircle className="h-3.5 w-3.5" />
+              재게시 필요
+            </span>
+          )}
+          {/* Edit mode indicator */}
+          {isPublished && isEditMode && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400">
+              <Pencil className="h-3.5 w-3.5" />
+              수정 중
+            </span>
+          )}
+
+          {/* Buttons for unpublished minutes */}
+          {!isPublished && (
+            <>
+              <Button variant="outline" size="sm" onClick={handleSaveDraft}>
+                <FileText className="h-4 w-4" />
+                저장
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleDownload}>
+                <Download className="h-4 w-4" />
+                MD 다운로드
+              </Button>
+              <Button size="sm" onClick={handlePublish} disabled={isPublishing}>
+                {isPublishing ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                Confluence 게시
+              </Button>
+            </>
+          )}
+
+          {/* Buttons for published minutes */}
+          {isPublished && !isEditMode && (
+            <>
+              <Button variant="outline" size="sm" onClick={handleStartEdit}>
+                <Pencil className="h-4 w-4" />
+                수정하기
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleDownload}>
+                <Download className="h-4 w-4" />
+                MD 다운로드
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open(getConfluenceUrl(meetingData?.confluence_page_id), "_blank")}
+              >
+                <ExternalLink className="h-4 w-4" />
+                Confluence
+              </Button>
+              {!minutes.confluenceSynced && (
+                <Button size="sm" onClick={handlePublish} disabled={isPublishing}>
+                  {isPublishing ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  재게시
+                </Button>
+              )}
+            </>
+          )}
+
+          {/* Buttons for edit mode */}
+          {isPublished && isEditMode && (
+            <>
+              <Button variant="outline" size="sm" onClick={handleCancelEdit}>
+                <X className="h-4 w-4" />
+                취소
+              </Button>
+              <Button size="sm" onClick={handleFinishEditRequest}>
+                <Check className="h-4 w-4" />
+                수정완료
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Meeting info section with editable title */}
+      <div className="mb-6 rounded-lg border border-border bg-card p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            {isEditingTitle ? (
+              <div className="flex items-center gap-2">
+                <Input
+                  ref={titleInputRef}
+                  type="text"
+                  value={editedTitle}
+                  onChange={(e) => setEditedTitle(e.target.value)}
+                  onKeyDown={handleTitleKeyDown}
+                  placeholder="회의 제목을 입력하세요"
+                  className="text-lg font-semibold h-9"
+                />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleSaveTitle}
+                  disabled={updateMeeting.isPending}
+                >
+                  <Check className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleCancelEditTitle}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="group flex items-center gap-2">
+                <h2 className="text-lg font-semibold truncate">{meetingData?.title || "회의 제목"}</h2>
+                <button
+                  type="button"
+                  onClick={handleStartEditTitle}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-accent"
+                  title="제목 수정"
+                >
+                  <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                </button>
+              </div>
+            )}
+            <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+              {meetingData?.meeting_date && (
+                <span className="flex items-center gap-1.5">
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  {formatDisplayDate(meetingData.meeting_date)}
+                </span>
+              )}
+              {meetingData?.location && (
+                <span className="flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5" />
+                  {meetingData.location}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          {/* 6번: 게시 완료 시 에디터 읽기 전용 */}
           <MinutesEditor
             content={minutes.content}
             onChange={handleContentChange}
             corrections={minutes.corrections}
             activeCorrectionIndex={activeCorrectionIndex}
-            readOnly={isPublished}
+            readOnly={isPublished && !isEditMode}
           />
-          {isPublished && (
-            <p className="mt-2 text-sm text-muted-foreground text-center">
-              게시 완료된 회의록은 수정할 수 없습니다.
+          {isPublished && !isEditMode && minutes.confluenceSynced && (
+            <p className="mt-3 text-xs text-muted-foreground text-center">
+              수정하려면 상단의 수정하기 버튼을 눌러주세요
             </p>
           )}
         </div>

@@ -1,7 +1,8 @@
 "use client";
 
+import { format } from "date-fns";
 import { useAtomValue, useSetAtom } from "jotai";
-import { BookText, FileText, Mic, Upload } from "lucide-react";
+import { BookText, CalendarDays, FileText, MapPin, Mic, Type, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { MeetingType } from "@/atoms/meeting";
@@ -9,6 +10,9 @@ import { meetingModeAtom, meetingTypeAtom } from "@/atoms/meeting";
 import { selectedTeamIdAtom } from "@/atoms/team";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Weeky } from "@/components/weeky/weeky";
 import { useCreateMeetingApiV1MeetingsPost } from "@/lib/api/__generated__/meetings/meetings";
 import { cn } from "@/lib/utils";
@@ -20,6 +24,9 @@ export default function NewMeetingPage() {
   const selectedTeamId = useAtomValue(selectedTeamIdAtom);
   const [selectedMode, setSelectedMode] = useState<"upload" | "realtime">("upload");
   const [selectedType, setSelectedType] = useState<MeetingType>("weekly_report");
+  const [meetingDate, setMeetingDate] = useState<Date | undefined>(undefined);
+  const [meetingTitle, setMeetingTitle] = useState<string>("");
+  const [meetingLocation, setMeetingLocation] = useState<string>("");
 
   const createMeeting = useCreateMeetingApiV1MeetingsPost({
     mutation: {
@@ -45,16 +52,12 @@ export default function NewMeetingPage() {
     setMode(selectedMode);
     setMeetingType(selectedType);
 
-    const title =
-      selectedType === "general"
-        ? `${new Date().toLocaleDateString("ko-KR")} 일반 회의`
-        : `${new Date().toLocaleDateString("ko-KR")} 주간회의`;
-
     createMeeting.mutate({
       data: {
         team_id: selectedTeamId,
-        meeting_date: new Date().toISOString().split("T")[0],
-        title,
+        meeting_date: meetingDate ? format(meetingDate, "yyyy-MM-dd") : undefined,
+        title: meetingTitle || undefined,
+        location: meetingLocation || undefined,
         meeting_mode: selectedMode,
         meeting_type: selectedType,
       },
@@ -111,6 +114,65 @@ export default function NewMeetingPage() {
             </CardHeader>
           </Card>
         </div>
+      </div>
+
+      <div className="mb-6">
+        <h2 className="mb-3 text-sm font-medium text-muted-foreground">회의 정보 (선택)</h2>
+        <Card className="overflow-hidden">
+          <CardContent className="p-0">
+            <div className="grid divide-y sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+              <div className="p-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <CalendarDays className="size-4 text-primary" />
+                  <Label className="text-sm font-medium">회의 날짜</Label>
+                </div>
+                <DatePicker
+                  date={meetingDate}
+                  onDateChange={setMeetingDate}
+                  placeholder="날짜를 선택하세요"
+                />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  미입력 시 오늘 날짜로 설정됩니다
+                </p>
+              </div>
+              <div className="p-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <Type className="size-4 text-primary" />
+                  <Label htmlFor="meeting-title" className="text-sm font-medium">
+                    회의 제목
+                  </Label>
+                </div>
+                <Input
+                  id="meeting-title"
+                  type="text"
+                  value={meetingTitle}
+                  onChange={(e) => setMeetingTitle(e.target.value)}
+                  placeholder="예: 프로젝트 킥오프 미팅"
+                  className="bg-background"
+                />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  미입력 시 자동 생성 (예: 주간회의 (25/1/5))
+                </p>
+              </div>
+            </div>
+            <div className="border-t p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <MapPin className="size-4 text-primary" />
+                <Label htmlFor="meeting-location" className="text-sm font-medium">
+                  장소
+                </Label>
+              </div>
+              <Input
+                id="meeting-location"
+                type="text"
+                value={meetingLocation}
+                onChange={(e) => setMeetingLocation(e.target.value)}
+                placeholder="예: 회의실 A, 온라인 (Zoom)"
+                className="bg-background"
+              />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="mb-6">

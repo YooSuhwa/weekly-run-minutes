@@ -1047,7 +1047,7 @@
           "meetings"
         ],
         "summary": "Create Meeting",
-        "description": "Create a new meeting.\n\nP2 Feature: Supports meeting_type for WEEKLY_REPORT or GENERAL meetings.\nGENERAL meetings can have optional agenda_items.",
+        "description": "Create a new meeting.\n\nP2 Feature: Supports meeting_type for WEEKLY_REPORT or GENERAL meetings.\nGENERAL meetings can have optional agenda_items.\n\nIf meeting_date is not provided, defaults to today.\nIf title is not provided, defaults to:\n- Weekly report: \"주간회의 (yy/m/d)\"\n- General: \"일반회의 (yy/m/d)\" (can be updated later by AI)",
         "operationId": "create_meeting_api_v1_meetings_post",
         "requestBody": {
           "required": true,
@@ -1978,7 +1978,7 @@
           "minutes"
         ],
         "summary": "Publish Minutes To Confluence",
-        "description": "Publish meeting minutes to Confluence.\n\nCreates a new Confluence page with the minutes content.\nUses team-specific Confluence settings if available.",
+        "description": "Publish or re-publish meeting minutes to Confluence.\n\nCreates a new Confluence page or updates existing page.\nUses team-specific Confluence settings if available.",
         "operationId": "publish_minutes_to_confluence_api_v1_minutes_meetings__meeting_id__publish_post",
         "parameters": [
           {
@@ -3250,15 +3250,41 @@
             "title": "Team Id"
           },
           "meeting_date": {
-            "type": "string",
-            "format": "date",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Meeting Date"
           },
           "title": {
-            "type": "string",
-            "maxLength": 200,
-            "minLength": 1,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Title"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
           },
           "meeting_mode": {
             "$ref": "#/components/schemas/MeetingMode",
@@ -3281,13 +3307,38 @@
               }
             ],
             "title": "Agenda Items"
+          },
+          "context_terms": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Terms"
+          },
+          "context_instructions": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Instructions"
           }
         },
         "type": "object",
         "required": [
-          "team_id",
-          "meeting_date",
-          "title"
+          "team_id"
         ],
         "title": "MeetingCreate",
         "description": "Schema for creating a meeting."
@@ -3327,6 +3378,10 @@
             "type": "boolean",
             "title": "Is Edited"
           },
+          "confluence_synced": {
+            "type": "boolean",
+            "title": "Confluence Synced"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -3338,6 +3393,7 @@
           "id",
           "ai_model",
           "is_edited",
+          "confluence_synced",
           "created_at"
         ],
         "title": "MeetingMinutesInfo",
@@ -3459,6 +3515,17 @@
             "type": "string",
             "title": "Title"
           },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
           "status": {
             "$ref": "#/components/schemas/MeetingStatus"
           },
@@ -3516,6 +3583,31 @@
               }
             ],
             "title": "Agenda Items"
+          },
+          "context_terms": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Terms"
+          },
+          "context_instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Instructions"
           }
         },
         "type": "object",
@@ -3526,13 +3618,16 @@
           "team_id",
           "meeting_date",
           "title",
+          "location",
           "status",
           "meeting_mode",
           "meeting_type",
           "error_message",
           "confluence_page_id",
           "confluence_page_url",
-          "agenda_items"
+          "agenda_items",
+          "context_terms",
+          "context_instructions"
         ],
         "title": "MeetingResponse",
         "description": "Schema for meeting response."
@@ -3642,6 +3737,18 @@
             ],
             "title": "Meeting Date"
           },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
           "agenda_items": {
             "anyOf": [
               {
@@ -3655,6 +3762,33 @@
               }
             ],
             "title": "Agenda Items"
+          },
+          "context_terms": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Terms"
+          },
+          "context_instructions": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Instructions"
           }
         },
         "type": "object",
@@ -3691,6 +3825,17 @@
           "title": {
             "type": "string",
             "title": "Title"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
           },
           "status": {
             "$ref": "#/components/schemas/MeetingStatus"
@@ -3750,6 +3895,31 @@
             ],
             "title": "Agenda Items"
           },
+          "context_terms": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Terms"
+          },
+          "context_instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Instructions"
+          },
           "recording": {
             "anyOf": [
               {
@@ -3789,6 +3959,7 @@
           "team_id",
           "meeting_date",
           "title",
+          "location",
           "status",
           "meeting_mode",
           "meeting_type",
@@ -3796,6 +3967,8 @@
           "confluence_page_id",
           "confluence_page_url",
           "agenda_items",
+          "context_terms",
+          "context_instructions",
           "recording",
           "weekly_report",
           "minutes"
@@ -3885,6 +4058,10 @@
             },
             "type": "array",
             "title": "Corrections"
+          },
+          "confluence_synced": {
+            "type": "boolean",
+            "title": "Confluence Synced"
           }
         },
         "type": "object",
@@ -3896,7 +4073,8 @@
           "prompt_version",
           "is_edited",
           "edited_content",
-          "corrections"
+          "corrections",
+          "confluence_synced"
         ],
         "title": "MinutesResponse",
         "description": "Meeting minutes response."
