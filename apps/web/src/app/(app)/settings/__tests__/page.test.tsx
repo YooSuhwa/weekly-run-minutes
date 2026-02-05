@@ -5,44 +5,77 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Hoisted mocks - must be declared first
-const { mockToastSuccess, mockToastError, mockTeamsList, mockVocabularyList, mockRefetch } =
-  vi.hoisted(() => {
-    const mockToastSuccess = vi.fn();
-    const mockToastError = vi.fn();
-    const mockRefetch = vi.fn();
+const {
+  mockToastSuccess,
+  mockToastError,
+  mockTeamsList,
+  mockVocabularyList,
+  mockRefetch,
+  mockState,
+  mockTeamData,
+} = vi.hoisted(() => {
+  const mockToastSuccess = vi.fn();
+  const mockToastError = vi.fn();
+  const mockRefetch = vi.fn();
 
-    const mockTeamsList = [{ id: "t1", name: "제품기술팀" }];
-    const mockVocabularyList = [
-      {
-        id: "v1",
-        team_id: "t1",
-        term: "SDK",
-        correction: "에스디케이",
-        category: "abbreviation" as const,
-        created_at: "2024-01-01T00:00:00Z",
-        updated_at: "2024-01-01T00:00:00Z",
-      },
-      {
-        id: "v2",
-        team_id: "t1",
-        term: "AI",
-        correction: "에이아이",
-        category: "terminology" as const,
-        created_at: "2024-01-01T00:00:00Z",
-        updated_at: "2024-01-01T00:00:00Z",
-      },
-    ];
+  const mockTeamsList = [{ id: "t1", name: "제품기술팀" }];
+  const mockVocabularyList = [
+    {
+      id: "v1",
+      team_id: "t1",
+      term: "SDK",
+      correction: "에스디케이",
+      category: "abbreviation" as const,
+      created_at: "2024-01-01T00:00:00Z",
+      updated_at: "2024-01-01T00:00:00Z",
+    },
+    {
+      id: "v2",
+      team_id: "t1",
+      term: "AI",
+      correction: "에이아이",
+      category: "terminology" as const,
+      created_at: "2024-01-01T00:00:00Z",
+      updated_at: "2024-01-01T00:00:00Z",
+    },
+  ];
 
-    return {
-      mockToastSuccess,
-      mockToastError,
-      mockTeamsList,
-      mockVocabularyList,
-      mockRefetch,
-    };
-  });
+  // Stable team data object to prevent useEffect from re-running on every render
+  const mockTeamData = {
+    id: "t1",
+    name: "제품기술팀",
+    filtering_enabled: true,
+    filtering_confidence_threshold: 0.7,
+    confluence_base_url: "",
+    confluence_space_key: "",
+    confluence_username: "",
+    has_confluence_token: false,
+    context_terms: [],
+    context_instructions: "",
+  };
 
-// State to control mutation behaviors
+  // Use object for mutable state that can be accessed in hoisted mocks
+  const mockState = {
+    createShouldFail: false,
+    updateShouldFail: false,
+    deleteShouldFail: false,
+    bulkImportShouldFail: false,
+    returnEmptyTeams: false,
+    returnEmptyVocabulary: false,
+  };
+
+  return {
+    mockToastSuccess,
+    mockToastError,
+    mockTeamsList,
+    mockVocabularyList,
+    mockRefetch,
+    mockState,
+    mockTeamData,
+  };
+});
+
+// Aliases for easier access
 let createShouldFail = false;
 let updateShouldFail = false;
 let deleteShouldFail = false;
@@ -55,21 +88,57 @@ vi.mock("@/components/ui/toast", () => ({
   useToast: () => ({ success: mockToastSuccess, error: mockToastError }),
 }));
 
+// Mock next/navigation
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+// Mock Weeky component
+vi.mock("@/components/weeky/weeky", () => ({
+  Weeky: ({ message }: { message?: string }) => <div data-testid="weeky">{message}</div>,
+}));
+
 // Mock API hooks
 vi.mock("@/lib/api/__generated__/teams/teams", () => ({
   useListTeamsApiV1TeamsGet: vi.fn(() => ({
-    data: returnEmptyTeams ? [] : mockTeamsList,
+    data: mockState.returnEmptyTeams ? [] : mockTeamsList,
+  })),
+  useGetTeamApiV1TeamsTeamIdGet: vi.fn(() => ({
+    data: mockTeamData,
+    refetch: vi.fn(),
+  })),
+  useUpdateTeamApiV1TeamsTeamIdPut: vi.fn((options) => ({
+    mutate: vi.fn((params, overrideOptions) => {
+      // Call onSuccess from options
+      const opts = overrideOptions || options;
+      if (opts?.mutation?.onSuccess) {
+        opts.mutation.onSuccess({});
+      } else if (opts?.onSuccess) {
+        opts.onSuccess({});
+      }
+    }),
+    mutateAsync: vi.fn().mockResolvedValue({}),
+    isPending: false,
+  })),
+  useDeleteTeamApiV1TeamsTeamIdDelete: vi.fn((options) => ({
+    mutate: vi.fn(() => {
+      if (options?.mutation?.onSuccess) {
+        options.mutation.onSuccess({});
+      }
+    }),
+    mutateAsync: vi.fn().mockResolvedValue({}),
+    isPending: false,
   })),
 }));
 
 vi.mock("@/lib/api/__generated__/vocabulary/vocabulary", () => ({
   useListVocabularyApiV1TeamsTeamIdVocabularyGet: vi.fn(() => ({
-    data: returnEmptyVocabulary ? [] : mockVocabularyList,
+    data: mockState.returnEmptyVocabulary ? [] : mockVocabularyList,
     refetch: mockRefetch,
   })),
   useCreateVocabularyApiV1TeamsTeamIdVocabularyPost: vi.fn((options) => ({
     mutate: (params: any) => {
-      if (createShouldFail) {
+      if (mockState.createShouldFail) {
         if (options?.mutation?.onError) {
           options.mutation.onError(new Error("Failed"));
         }
@@ -89,7 +158,7 @@ vi.mock("@/lib/api/__generated__/vocabulary/vocabulary", () => ({
   })),
   useUpdateVocabularyApiV1TeamsTeamIdVocabularyVocabularyIdPut: vi.fn((options) => ({
     mutate: (params: any) => {
-      if (updateShouldFail) {
+      if (mockState.updateShouldFail) {
         if (options?.mutation?.onError) {
           options.mutation.onError(new Error("Failed"));
         }
@@ -109,7 +178,7 @@ vi.mock("@/lib/api/__generated__/vocabulary/vocabulary", () => ({
   })),
   useDeleteVocabularyApiV1TeamsTeamIdVocabularyVocabularyIdDelete: vi.fn((options) => ({
     mutate: () => {
-      if (deleteShouldFail) {
+      if (mockState.deleteShouldFail) {
         if (options?.mutation?.onError) {
           options.mutation.onError(new Error("Failed"));
         }
@@ -123,7 +192,7 @@ vi.mock("@/lib/api/__generated__/vocabulary/vocabulary", () => ({
   })),
   useBulkImportVocabularyApiV1TeamsTeamIdVocabularyImportPost: vi.fn((options) => ({
     mutate: (params: any) => {
-      if (bulkImportShouldFail) {
+      if (mockState.bulkImportShouldFail) {
         if (options?.mutation?.onError) {
           options.mutation.onError(new Error("Failed"));
         }
@@ -147,16 +216,26 @@ vi.mock("@/lib/api/__generated__/vocabulary/vocabulary", () => ({
   })),
 }));
 
+import { selectedTeamIdAtom } from "@/atoms/team";
 import SettingsPage from "../page";
 
-function renderWithProviders(ui: ReactNode) {
+function renderWithProviders(ui: ReactNode, teamId: string | null = "t1") {
   const store = createStore();
+  // Always set the atom - either to the teamId or null for no-team scenarios
+  store.set(selectedTeamIdAtom, teamId);
   return render(<Provider store={store}>{ui}</Provider>);
 }
 
 describe("SettingsPage", () => {
   beforeEach(() => {
-    // Reset all flags
+    // Reset all flags using mockState
+    mockState.createShouldFail = false;
+    mockState.updateShouldFail = false;
+    mockState.deleteShouldFail = false;
+    mockState.bulkImportShouldFail = false;
+    mockState.returnEmptyTeams = false;
+    mockState.returnEmptyVocabulary = false;
+    // Keep local aliases in sync
     createShouldFail = false;
     updateShouldFail = false;
     deleteShouldFail = false;
@@ -180,35 +259,44 @@ describe("SettingsPage", () => {
       renderWithProviders(<SettingsPage />);
       expect(screen.getByText("용어집")).toBeInTheDocument();
       expect(screen.getByText("잡담 필터링")).toBeInTheDocument();
+      expect(screen.getByText("Confluence")).toBeInTheDocument();
     });
 
-    it("shows vocabulary tab by default", () => {
+    it("shows team tab by default", () => {
       renderWithProviders(<SettingsPage />);
-      expect(screen.getByText("용어 목록")).toBeInTheDocument();
+      expect(screen.getByText("현재 팀 정보")).toBeInTheDocument();
     });
 
-    it("renders vocabulary list", () => {
+    it("renders vocabulary list when vocabulary tab is active", async () => {
+      const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
-      expect(screen.getByText("SDK")).toBeInTheDocument();
-      expect(screen.getByText("에스디케이")).toBeInTheDocument();
+      await user.click(screen.getByText("용어집"));
+      await waitFor(() => {
+        expect(screen.getByText("SDK")).toBeInTheDocument();
+      });
+      // The correction is displayed as "← correction" in the table
+      expect(screen.getByText(/← 에스디케이/)).toBeInTheDocument();
       expect(screen.getByText("AI")).toBeInTheDocument();
-      expect(screen.getByText("에이아이")).toBeInTheDocument();
+      expect(screen.getByText(/← 에이아이/)).toBeInTheDocument();
     });
 
-    it("shows total count", () => {
+    it("shows total count on vocabulary tab", async () => {
+      const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
-      expect(screen.getByText("총 2개 용어")).toBeInTheDocument();
+      await user.click(screen.getByText("용어집"));
+      expect(screen.getByText(/총 2개 용어/)).toBeInTheDocument();
     });
 
     it("shows message when no team selected", () => {
-      returnEmptyTeams = true;
-      renderWithProviders(<SettingsPage />);
-      expect(screen.getByText("팀을 선택해주세요.")).toBeInTheDocument();
+      renderWithProviders(<SettingsPage />, null);
+      expect(screen.getByTestId("weeky")).toHaveTextContent(/팀을 먼저 선택해주세요/);
     });
 
-    it("shows empty message when no vocabulary", () => {
-      returnEmptyVocabulary = true;
+    it("shows empty message when no vocabulary", async () => {
+      mockState.returnEmptyVocabulary = true;
+      const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
       expect(screen.getByText("등록된 용어가 없습니다")).toBeInTheDocument();
     });
   });
@@ -236,6 +324,7 @@ describe("SettingsPage", () => {
     it("shows add form on button click", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       await user.click(screen.getByText("용어 추가"));
       expect(screen.getByText("새 용어 추가")).toBeInTheDocument();
@@ -244,6 +333,7 @@ describe("SettingsPage", () => {
     it("disables add button when form is open", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       const addButton = screen.getByText("용어 추가");
       await user.click(addButton);
@@ -253,12 +343,13 @@ describe("SettingsPage", () => {
     it("adds vocabulary successfully", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       await user.click(screen.getByText("용어 추가"));
 
-      await user.type(screen.getByLabelText("용어"), "HWP");
-      await user.type(screen.getByLabelText("교정어"), "한글 워드 프로세서");
-      await user.selectOptions(screen.getByLabelText("카테고리"), "abbreviation");
+      await user.type(screen.getByLabelText(/^용어/), "HWP");
+      await user.type(screen.getByLabelText(/^발음 힌트/), "한글 워드 프로세서");
+      await user.selectOptions(screen.getByLabelText(/^카테고리/), "abbreviation");
 
       await user.click(screen.getByRole("button", { name: "추가" }));
 
@@ -270,6 +361,7 @@ describe("SettingsPage", () => {
     it("cancels add form", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       await user.click(screen.getByText("용어 추가"));
       expect(screen.getByText("새 용어 추가")).toBeInTheDocument();
@@ -281,6 +373,7 @@ describe("SettingsPage", () => {
     it("disables add button when form is empty", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       await user.click(screen.getByText("용어 추가"));
       const submitButton = screen.getByRole("button", { name: "추가" });
@@ -288,13 +381,14 @@ describe("SettingsPage", () => {
     });
 
     it("shows error toast on add failure", async () => {
-      createShouldFail = true;
+      mockState.createShouldFail = true;
       const user = userEvent.setup();
 
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
       await user.click(screen.getByText("용어 추가"));
-      await user.type(screen.getByLabelText("용어"), "Test");
-      await user.type(screen.getByLabelText("교정어"), "테스트");
+      await user.type(screen.getByLabelText(/^용어/), "Test");
+      await user.type(screen.getByLabelText(/^발음 힌트/), "테스트");
       await user.click(screen.getByRole("button", { name: "추가" }));
 
       await waitFor(() => {
@@ -307,6 +401,7 @@ describe("SettingsPage", () => {
     it("enters edit mode on edit button click", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       const editButtons = screen.getAllByRole("button");
       const editButton = editButtons.find((btn) => btn.querySelector("svg.lucide-pencil"));
@@ -325,6 +420,7 @@ describe("SettingsPage", () => {
     it("saves edit successfully", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       const editButtons = screen.getAllByRole("button");
       const editButton = editButtons.find((btn) => btn.querySelector("svg.lucide-pencil"));
@@ -349,6 +445,7 @@ describe("SettingsPage", () => {
     it("cancels edit mode", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       const editButtons = screen.getAllByRole("button");
       const editButton = editButtons.find((btn) => btn.querySelector("svg.lucide-pencil"));
@@ -370,10 +467,11 @@ describe("SettingsPage", () => {
     });
 
     it("shows error toast on edit failure", async () => {
-      updateShouldFail = true;
+      mockState.updateShouldFail = true;
       const user = userEvent.setup();
 
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       const editButtons = screen.getAllByRole("button");
       const editButton = editButtons.find((btn) => btn.querySelector("svg.lucide-pencil"));
@@ -394,9 +492,20 @@ describe("SettingsPage", () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
 
-      const deleteButtons = screen.getAllByRole("button");
-      const deleteButton = deleteButtons.find((btn) => btn.querySelector("svg.lucide-trash-2"));
-      expect(deleteButton).toBeDefined();
+      // Click vocabulary tab
+      const vocabTab = screen.getByText("용어집");
+      await user.click(vocabTab);
+
+      // Wait for vocabulary table to render with items
+      let deleteButton: HTMLElement | null = null;
+      await waitFor(() => {
+        expect(screen.getByText("SDK")).toBeInTheDocument();
+        // Find delete button - the first trash icon in the vocabulary table
+        const trashIcons = screen.getAllByTestId("icon-trash2");
+        deleteButton = trashIcons[0].closest("button");
+        expect(deleteButton).not.toBeNull();
+      });
+
       if (deleteButton) {
         await user.click(deleteButton);
       }
@@ -407,13 +516,24 @@ describe("SettingsPage", () => {
     });
 
     it("shows error toast on delete failure", async () => {
-      deleteShouldFail = true;
+      mockState.deleteShouldFail = true;
       const user = userEvent.setup();
 
       renderWithProviders(<SettingsPage />);
 
-      const deleteButtons = screen.getAllByRole("button");
-      const deleteButton = deleteButtons.find((btn) => btn.querySelector("svg.lucide-trash-2"));
+      // Click vocabulary tab
+      const vocabTab = screen.getByText("용어집");
+      await user.click(vocabTab);
+
+      // Wait for vocabulary table to render
+      let deleteButton: HTMLElement | null = null;
+      await waitFor(() => {
+        expect(screen.getByText("SDK")).toBeInTheDocument();
+        const trashIcons = screen.getAllByTestId("icon-trash2");
+        deleteButton = trashIcons[0].closest("button");
+        expect(deleteButton).not.toBeNull();
+      });
+
       if (deleteButton) {
         await user.click(deleteButton);
       }
@@ -428,6 +548,7 @@ describe("SettingsPage", () => {
     it("filters vocabulary by search query", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       await user.type(screen.getByPlaceholderText("용어 검색..."), "SDK");
 
@@ -440,6 +561,7 @@ describe("SettingsPage", () => {
     it("shows no results message when search has no matches", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       await user.type(screen.getByPlaceholderText("용어 검색..."), "xyz");
 
@@ -451,6 +573,7 @@ describe("SettingsPage", () => {
     it("filters by category", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       const comboboxes = screen.getAllByRole("combobox");
       const categorySelect = comboboxes[0]; // First combobox is category filter
@@ -465,6 +588,7 @@ describe("SettingsPage", () => {
     it("shows bulk import modal", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       await user.click(screen.getByText("가져오기"));
       expect(screen.getByText("일괄 가져오기")).toBeInTheDocument();
@@ -473,6 +597,7 @@ describe("SettingsPage", () => {
     it("imports vocabulary successfully", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       await user.click(screen.getByText("가져오기"));
 
@@ -497,6 +622,7 @@ describe("SettingsPage", () => {
     it("cancels bulk import modal", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       await user.click(screen.getByText("가져오기"));
       expect(screen.getByText("일괄 가져오기")).toBeInTheDocument();
@@ -508,13 +634,18 @@ describe("SettingsPage", () => {
     it("shows error for invalid bulk import format", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       await user.click(screen.getByText("가져오기"));
 
+      // The import button should be disabled when textarea is empty, so we try to import empty lines
       const textareas = screen.getAllByRole("textbox");
       const textarea = textareas.find((t) => t.tagName.toLowerCase() === "textarea");
       if (textarea) {
-        await user.type(textarea, "invalid data without comma");
+        // Type only whitespace/empty content that won't produce valid items
+        await user.type(textarea, "   ");
+        await user.clear(textarea);
+        await user.type(textarea, ",");
       }
 
       const importButtons = screen.getAllByRole("button", { name: "가져오기" });
@@ -522,16 +653,17 @@ describe("SettingsPage", () => {
 
       await waitFor(() => {
         expect(mockToastError).toHaveBeenCalledWith(
-          "유효한 데이터가 없습니다. 형식: 용어,교정어,카테고리",
+          "유효한 데이터가 없습니다. 형식: 용어,발음힌트,카테고리",
         );
       });
     });
 
     it("shows error toast on bulk import failure", async () => {
-      bulkImportShouldFail = true;
+      mockState.bulkImportShouldFail = true;
       const user = userEvent.setup();
 
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
       await user.click(screen.getByText("가져오기"));
 
       const textareas = screen.getAllByRole("textbox");
@@ -569,6 +701,7 @@ describe("SettingsPage", () => {
       });
 
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
       await user.click(screen.getByText("내보내기"));
 
       await waitFor(() => {
@@ -577,10 +710,11 @@ describe("SettingsPage", () => {
     });
 
     it("shows error when exporting empty vocabulary", async () => {
-      returnEmptyVocabulary = true;
+      mockState.returnEmptyVocabulary = true;
       const user = userEvent.setup();
 
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
       await user.click(screen.getByText("내보내기"));
 
       await waitFor(() => {
@@ -607,7 +741,9 @@ describe("SettingsPage", () => {
 
       expect(toggle).toHaveAttribute("aria-checked", "true");
       await user.click(toggle);
-      expect(toggle).toHaveAttribute("aria-checked", "false");
+      await waitFor(() => {
+        expect(toggle).toHaveAttribute("aria-checked", "false");
+      });
     });
 
     it("hides threshold slider when filtering is disabled", async () => {
@@ -618,7 +754,9 @@ describe("SettingsPage", () => {
       const toggle = screen.getByRole("switch");
       await user.click(toggle);
 
-      expect(screen.queryByText("신뢰도 임계값")).not.toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.queryByText("신뢰도 임계값")).not.toBeInTheDocument();
+      });
     });
 
     it("shows threshold slider when filtering is enabled", async () => {
@@ -661,8 +799,10 @@ describe("SettingsPage", () => {
   });
 
   describe("Category Labels", () => {
-    it("displays correct category labels", () => {
+    it("displays correct category labels", async () => {
+      const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
       // Use getAllByText since labels appear both in dropdown and table
       expect(screen.getAllByText("약어").length).toBeGreaterThan(0);
       expect(screen.getAllByText("전문 용어").length).toBeGreaterThan(0);
@@ -670,8 +810,10 @@ describe("SettingsPage", () => {
   });
 
   describe("Action Buttons", () => {
-    it("renders all action buttons", () => {
+    it("renders all action buttons", async () => {
+      const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
       expect(screen.getByText("가져오기")).toBeInTheDocument();
       expect(screen.getByText("내보내기")).toBeInTheDocument();
       expect(screen.getByText("용어 추가")).toBeInTheDocument();
@@ -682,10 +824,11 @@ describe("SettingsPage", () => {
     it("trims whitespace from term and correction", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       await user.click(screen.getByText("용어 추가"));
-      await user.type(screen.getByLabelText("용어"), "  HWP  ");
-      await user.type(screen.getByLabelText("교정어"), "  한글  ");
+      await user.type(screen.getByLabelText(/^용어/), "  HWP  ");
+      await user.type(screen.getByLabelText(/^발음 힌트/), "  한글  ");
       await user.click(screen.getByRole("button", { name: "추가" }));
 
       await waitFor(() => {
@@ -698,6 +841,7 @@ describe("SettingsPage", () => {
     it("handles bulk import with only term and correction (no category)", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       await user.click(screen.getByText("가져오기"));
 
@@ -718,6 +862,7 @@ describe("SettingsPage", () => {
     it("handles bulk import with invalid category (defaults to other)", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       await user.click(screen.getByText("가져오기"));
 
@@ -738,6 +883,7 @@ describe("SettingsPage", () => {
     it("closes add form when entering edit mode", async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage />);
+      await user.click(screen.getByText("용어집"));
 
       // Open add form
       await user.click(screen.getByText("용어 추가"));

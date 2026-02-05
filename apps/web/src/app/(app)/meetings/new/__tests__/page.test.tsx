@@ -22,6 +22,23 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
 }));
 
+// Mock Weeky component
+vi.mock("@/components/weeky/weeky", () => ({
+  Weeky: ({ message }: { message?: string }) => <div data-testid="weeky">{message}</div>,
+}));
+
+// Mock DatePicker
+vi.mock("@/components/ui/date-picker", () => ({
+  DatePicker: ({ value, onChange }: { value?: Date; onChange?: (date: Date | undefined) => void }) => (
+    <input
+      type="date"
+      data-testid="date-picker"
+      value={value?.toISOString().split("T")[0] || ""}
+      onChange={(e) => onChange?.(e.target.value ? new Date(e.target.value) : undefined)}
+    />
+  ),
+}));
+
 // Mock Orval hook
 vi.mock("@/lib/api/__generated__/meetings/meetings", () => ({
   useCreateMeetingApiV1MeetingsPost: (opts?: {
@@ -65,8 +82,8 @@ describe("NewMeetingPage", () => {
 
   it("renders page title", () => {
     renderWithProviders(<NewMeetingPage />);
-    expect(screen.getByText("새 회의 시작")).toBeInTheDocument();
-    expect(screen.getByText("회의 방식을 선택하세요")).toBeInTheDocument();
+    // The page now uses Weeky with a message instead of a static title
+    expect(screen.getByTestId("weeky")).toHaveTextContent("어떤 방식으로 회의록을 만들까요?");
   });
 
   it("renders meeting type selection cards", () => {
@@ -146,7 +163,6 @@ describe("NewMeetingPage", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           meeting_type: "general",
-          title: expect.stringContaining("일반 회의"),
         }),
       }),
     );
@@ -250,7 +266,7 @@ describe("NewMeetingPage", () => {
     );
   });
 
-  it("includes team_id and meeting_date in mutation data", async () => {
+  it("includes team_id in mutation data", async () => {
     const user = userEvent.setup();
     renderWithProviders(<NewMeetingPage />);
 
@@ -261,8 +277,8 @@ describe("NewMeetingPage", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           team_id: TEST_TEAM_ID,
-          meeting_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-          title: expect.stringContaining("주간회의"),
+          meeting_type: "weekly_report",
+          meeting_mode: "upload",
         }),
       }),
     );

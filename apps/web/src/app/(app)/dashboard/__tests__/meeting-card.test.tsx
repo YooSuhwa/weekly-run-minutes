@@ -1,4 +1,6 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
+import { createStore, Provider as JotaiProvider } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -11,22 +13,45 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-// Mock lucide-react icons
-vi.mock("lucide-react", () => ({
-  AlertCircle: () => <span>AlertCircle</span>,
-  CheckCircle: () => <span>CheckCircle</span>,
-  FileText: () => <span>FileText</span>,
-  Loader2: () => <span>Loader2</span>,
-  Mic: () => <span>Mic</span>,
-  Play: () => <span>Play</span>,
-  Upload: () => <span>Upload</span>,
+// Mock the Orval-generated hooks
+vi.mock("@/lib/api/__generated__/meetings/meetings", () => ({
+  getListMeetingsApiV1MeetingsGetQueryKey: vi.fn(() => ["meetings"]),
+  useDeleteMeetingApiV1MeetingsMeetingIdDelete: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+  })),
+  useUpdateMeetingApiV1MeetingsMeetingIdPut: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+  })),
+}));
+
+// Mock useToast
+vi.mock("@/components/ui/toast", () => ({
+  useToast: vi.fn(() => ({
+    success: vi.fn(),
+    error: vi.fn(),
+  })),
 }));
 
 import { MeetingCard } from "../meeting-card";
 
+function renderWithProviders(ui: ReactNode) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const jotaiStore = createStore();
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <JotaiProvider store={jotaiStore}>{ui}</JotaiProvider>
+    </QueryClientProvider>
+  );
+}
+
 describe("MeetingCard", () => {
   afterEach(() => {
     cleanup();
+    vi.clearAllMocks();
   });
 
   it("renders meeting title", () => {
@@ -38,7 +63,7 @@ describe("MeetingCard", () => {
       team_id: "t1",
       meeting_mode: "upload" as const,
     };
-    render(<MeetingCard meeting={meeting} />);
+    renderWithProviders(<MeetingCard meeting={meeting} />);
     expect(screen.getByText("1/15 주간회의")).toBeInTheDocument();
   });
 
@@ -51,7 +76,7 @@ describe("MeetingCard", () => {
       team_id: "t1",
       meeting_mode: "upload" as const,
     };
-    render(<MeetingCard meeting={meeting} />);
+    renderWithProviders(<MeetingCard meeting={meeting} />);
     expect(screen.getByText("초안 완료")).toBeInTheDocument();
   });
 
@@ -64,7 +89,7 @@ describe("MeetingCard", () => {
       team_id: "t1",
       meeting_mode: "upload" as const,
     };
-    render(<MeetingCard meeting={meeting} />);
+    renderWithProviders(<MeetingCard meeting={meeting} />);
     expect(screen.getByText("STT 처리 중")).toBeInTheDocument();
   });
 
@@ -77,7 +102,7 @@ describe("MeetingCard", () => {
       team_id: "t1",
       meeting_mode: "upload" as const,
     };
-    render(<MeetingCard meeting={meeting} />);
+    renderWithProviders(<MeetingCard meeting={meeting} />);
     expect(screen.getByText("실패")).toBeInTheDocument();
   });
 
@@ -90,7 +115,7 @@ describe("MeetingCard", () => {
       team_id: "t1",
       meeting_mode: "upload" as const,
     };
-    render(<MeetingCard meeting={meeting} />);
+    renderWithProviders(<MeetingCard meeting={meeting} />);
     expect(screen.getByTestId("card-link").getAttribute("href")).toBe("/meetings/abc/setup");
   });
 
@@ -103,7 +128,7 @@ describe("MeetingCard", () => {
       team_id: "t1",
       meeting_mode: "upload" as const,
     };
-    render(<MeetingCard meeting={meeting} />);
+    renderWithProviders(<MeetingCard meeting={meeting} />);
     expect(screen.getByTestId("card-link").getAttribute("href")).toBe("/meetings/def/processing");
   });
 
@@ -116,7 +141,7 @@ describe("MeetingCard", () => {
       team_id: "t1",
       meeting_mode: "upload" as const,
     };
-    render(<MeetingCard meeting={meeting} />);
+    renderWithProviders(<MeetingCard meeting={meeting} />);
     expect(screen.getByTestId("card-link").getAttribute("href")).toBe("/meetings/ghi/minutes");
   });
 
@@ -129,7 +154,7 @@ describe("MeetingCard", () => {
       team_id: "t1",
       meeting_mode: "realtime" as const,
     };
-    render(<MeetingCard meeting={meeting} />);
+    renderWithProviders(<MeetingCard meeting={meeting} />);
     expect(screen.getByTestId("card-link").getAttribute("href")).toBe("/meetings/jkl/live");
   });
 
@@ -142,7 +167,7 @@ describe("MeetingCard", () => {
       team_id: "t1",
       meeting_mode: "upload" as const,
     };
-    render(<MeetingCard meeting={meeting} />);
+    renderWithProviders(<MeetingCard meeting={meeting} />);
     expect(screen.getByText("게시 완료")).toBeInTheDocument();
   });
 });

@@ -26,22 +26,56 @@ vi.mock("@/components/ui/toast", () => ({
   useToast: () => mockToast,
 }));
 
+// Mock QueryClient
+vi.mock("@tanstack/react-query", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-query")>();
+  return {
+    ...actual,
+    useQueryClient: () => ({
+      invalidateQueries: vi.fn(),
+    }),
+  };
+});
+
+// Mock Weeky component
+vi.mock("@/components/weeky/weeky", () => ({
+  Weeky: ({ message }: { message?: string }) => <div data-testid="weeky">{message}</div>,
+}));
+
 // Mock the Orval-generated hooks
 const mockUseListTeams = vi.fn();
 const mockAuthenticateMutation = {
   mutate: vi.fn(),
   isPending: false,
 };
+const mockCreateMutation = {
+  mutate: vi.fn(),
+  mutateAsync: vi.fn().mockResolvedValue({}),
+  isPending: false,
+};
+const mockUpdateMutation = {
+  mutate: vi.fn(),
+  mutateAsync: vi.fn().mockResolvedValue({}),
+  isPending: false,
+};
+const mockDeleteMutation = {
+  mutate: vi.fn(),
+  mutateAsync: vi.fn().mockResolvedValue({}),
+  isPending: false,
+};
 vi.mock("@/lib/api/__generated__/teams/teams", () => ({
   useListTeamsApiV1TeamsGet: () => mockUseListTeams(),
+  getListTeamsApiV1TeamsGetQueryKey: () => ["teams"],
   useAuthenticateTeamApiV1TeamsTeamIdAuthPost: (options: {
     mutation: { onSuccess: (data: unknown) => void; onError: () => void };
   }) => {
-    // Store the callbacks for testing
     (mockAuthenticateMutation as Record<string, unknown>).onSuccess = options?.mutation?.onSuccess;
     (mockAuthenticateMutation as Record<string, unknown>).onError = options?.mutation?.onError;
     return mockAuthenticateMutation;
   },
+  useCreateTeamApiV1TeamsPost: () => mockCreateMutation,
+  useUpdateTeamApiV1TeamsTeamIdPut: () => mockUpdateMutation,
+  useDeleteTeamApiV1TeamsTeamIdDelete: () => mockDeleteMutation,
 }));
 
 import TeamsPage from "../page";
@@ -71,7 +105,8 @@ describe("TeamsPage", () => {
     it("shows loading state", () => {
       mockUseListTeams.mockReturnValue({ data: undefined, isLoading: true, error: null });
       renderWithProviders(<TeamsPage />);
-      expect(screen.getByText("팀 목록을 불러오는 중...")).toBeInTheDocument();
+      // Weeky shows loading message
+      expect(screen.getByTestId("weeky")).toHaveTextContent("팀 목록을 불러오고 있어요...");
     });
   });
 
@@ -83,7 +118,8 @@ describe("TeamsPage", () => {
         error: new Error("Network error"),
       });
       renderWithProviders(<TeamsPage />);
-      expect(screen.getByText("팀 목록을 불러오는데 실패했습니다")).toBeInTheDocument();
+      // Weeky shows error message
+      expect(screen.getByTestId("weeky")).toHaveTextContent("팀 목록을 불러오는데 실패했어요");
     });
   });
 
@@ -100,12 +136,14 @@ describe("TeamsPage", () => {
       {
         id: "team-1",
         name: "Product Tech Team",
+        has_password: false,
         created_at: "2024-01-15T00:00:00Z",
         updated_at: "2024-01-15T00:00:00Z",
       },
       {
         id: "team-2",
         name: "Design Team",
+        has_password: true,
         created_at: "2024-01-20T00:00:00Z",
         updated_at: "2024-01-20T00:00:00Z",
       },
@@ -145,6 +183,7 @@ describe("TeamsPage", () => {
       {
         id: "team-1",
         name: "Product Tech Team",
+        has_password: true,
         created_at: "2024-01-15T00:00:00Z",
         updated_at: "2024-01-15T00:00:00Z",
       },
@@ -154,7 +193,7 @@ describe("TeamsPage", () => {
       mockUseListTeams.mockReturnValue({ data: mockTeams, isLoading: false, error: null });
     });
 
-    it("opens password dialog on team click", async () => {
+    it("opens password dialog on team click when team has password", async () => {
       const user = userEvent.setup();
       renderWithProviders(<TeamsPage />);
 
@@ -163,19 +202,6 @@ describe("TeamsPage", () => {
       // Check dialog content is shown
       expect(screen.getByText(/팀에 접근하려면 비밀번호를 입력해주세요/)).toBeInTheDocument();
       expect(screen.getByTestId("password-input")).toBeInTheDocument();
-      // Dialog title should show team name (as h2)
-      expect(
-        screen.getByRole("heading", { level: 2, name: "Product Tech Team" }),
-      ).toBeInTheDocument();
-    });
-
-    it("shows skip button for teams without password", async () => {
-      const user = userEvent.setup();
-      renderWithProviders(<TeamsPage />);
-
-      await user.click(screen.getByTestId("team-card-team-1"));
-
-      expect(screen.getByText("건너뛰기")).toBeInTheDocument();
     });
 
     it("enables submit button when password is entered", async () => {
@@ -191,16 +217,16 @@ describe("TeamsPage", () => {
       expect(submitButton).not.toBeDisabled();
     });
 
-    it("closes dialog when clicking close button", async () => {
+    it("closes dialog when clicking cancel button", async () => {
       const user = userEvent.setup();
       renderWithProviders(<TeamsPage />);
 
       await user.click(screen.getByTestId("team-card-team-1"));
       expect(screen.getByText(/팀에 접근하려면 비밀번호를 입력해주세요/)).toBeInTheDocument();
 
-      // Click the close button (X icon in dialog)
-      const closeButton = screen.getByRole("button", { name: /close/i });
-      await user.click(closeButton);
+      // Click the cancel button
+      const cancelButton = screen.getByRole("button", { name: /취소/i });
+      await user.click(cancelButton);
 
       await waitFor(() => {
         expect(
@@ -215,6 +241,7 @@ describe("TeamsPage", () => {
       {
         id: "team-1",
         name: "Product Tech Team",
+        has_password: true,
         created_at: "2024-01-15T00:00:00Z",
         updated_at: "2024-01-15T00:00:00Z",
       },
@@ -287,11 +314,12 @@ describe("TeamsPage", () => {
     });
   });
 
-  describe("Skip password (direct selection)", () => {
+  describe("Direct selection (no password)", () => {
     const mockTeams = [
       {
         id: "team-1",
         name: "Product Tech Team",
+        has_password: false,
         created_at: "2024-01-15T00:00:00Z",
         updated_at: "2024-01-15T00:00:00Z",
       },
@@ -301,13 +329,13 @@ describe("TeamsPage", () => {
       mockUseListTeams.mockReturnValue({ data: mockTeams, isLoading: false, error: null });
     });
 
-    it("navigates to dashboard when skip button is clicked", async () => {
+    it("navigates to dashboard directly when team has no password", async () => {
       const user = userEvent.setup();
       const { store } = renderWithProviders(<TeamsPage />);
 
       await user.click(screen.getByTestId("team-card-team-1"));
-      await user.click(screen.getByText("건너뛰기"));
 
+      // No password dialog, directly selected
       expect(store.get(selectedTeamIdAtom)).toBe("team-1");
       expect(mockToast.success).toHaveBeenCalledWith("Product Tech Team 팀이 선택되었습니다");
       expect(mockPush).toHaveBeenCalledWith("/dashboard");
@@ -319,6 +347,7 @@ describe("TeamsPage", () => {
       {
         id: "team-1",
         name: "Product Tech Team",
+        has_password: true,
         created_at: "2024-01-15T00:00:00Z",
         updated_at: "2024-01-15T00:00:00Z",
       },
@@ -369,12 +398,14 @@ describe("TeamsPage", () => {
       {
         id: "team-1",
         name: "Product Tech Team",
+        has_password: true,
         created_at: "2024-01-15T00:00:00Z",
         updated_at: "2024-01-15T00:00:00Z",
       },
       {
         id: "team-2",
         name: "Design Team",
+        has_password: true,
         created_at: "2024-01-20T00:00:00Z",
         updated_at: "2024-01-20T00:00:00Z",
       },
@@ -392,7 +423,7 @@ describe("TeamsPage", () => {
       await user.type(screen.getByTestId("password-input"), "secret123");
 
       // Close dialog
-      await user.click(screen.getByText("건너뛰기"));
+      await user.click(screen.getByRole("button", { name: /취소/i }));
 
       // Open dialog again with different team
       await user.click(screen.getByTestId("team-card-team-2"));
@@ -417,7 +448,7 @@ describe("TeamsPage", () => {
       });
 
       // Close dialog
-      await user.click(screen.getByText("건너뛰기"));
+      await user.click(screen.getByRole("button", { name: /취소/i }));
 
       // Open dialog again
       await user.click(screen.getByTestId("team-card-team-2"));
@@ -431,8 +462,9 @@ describe("TeamsPage", () => {
 
       await user.click(screen.getByTestId("team-card-team-2"));
 
-      // The dialog title is an h2, while card titles are h3
-      expect(screen.getByRole("heading", { level: 2, name: "Design Team" })).toBeInTheDocument();
+      // The dialog title shows team name - there are 2 elements: card title and dialog title
+      const teamNameElements = screen.getAllByText("Design Team");
+      expect(teamNameElements.length).toBeGreaterThanOrEqual(2);
     });
   });
 });

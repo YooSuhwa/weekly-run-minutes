@@ -25,6 +25,8 @@ const mockEditor = {
   can: vi.fn().mockReturnValue(mockCanMethods),
   isActive: vi.fn().mockReturnValue(false),
   getText: vi.fn().mockReturnValue(""),
+  getHTML: vi.fn().mockReturnValue(""),
+  setEditable: vi.fn(),
   isFocused: false,
   commands: {
     setContent: vi.fn(),
@@ -63,7 +65,9 @@ vi.mock("@tiptap/react", () => ({
 }));
 
 vi.mock("@tiptap/starter-kit", () => ({
-  default: {},
+  default: {
+    configure: vi.fn().mockReturnValue({}),
+  },
 }));
 
 vi.mock("@tiptap/extension-placeholder", () => ({
@@ -78,15 +82,7 @@ vi.mock("../correction-highlight-extension", () => ({
   },
 }));
 
-vi.mock("lucide-react", () => ({
-  Bold: () => <span data-testid="icon-bold">Bold</span>,
-  Italic: () => <span data-testid="icon-italic">Italic</span>,
-  List: () => <span data-testid="icon-list">List</span>,
-  ListOrdered: () => <span data-testid="icon-list-ordered">ListOrdered</span>,
-  Redo: () => <span data-testid="icon-redo">Redo</span>,
-  Strikethrough: () => <span data-testid="icon-strikethrough">Strikethrough</span>,
-  Undo: () => <span data-testid="icon-undo">Undo</span>,
-}));
+// lucide-react is mocked globally in src/test/setup.ts
 
 import { MinutesEditor } from "../minutes-editor";
 
@@ -118,13 +114,14 @@ describe("MinutesEditor", () => {
 
     it("renders the toolbar", () => {
       render(<MinutesEditor {...defaultProps} />);
-      expect(screen.getByTitle("Bold")).toBeInTheDocument();
-      expect(screen.getByTitle("Italic")).toBeInTheDocument();
-      expect(screen.getByTitle("Strikethrough")).toBeInTheDocument();
-      expect(screen.getByTitle("Bullet List")).toBeInTheDocument();
-      expect(screen.getByTitle("Ordered List")).toBeInTheDocument();
-      expect(screen.getByTitle("Undo")).toBeInTheDocument();
-      expect(screen.getByTitle("Redo")).toBeInTheDocument();
+      // Use getAllByTitle since both button title and SVG <title> match
+      expect(screen.getAllByTitle("Bold").length).toBeGreaterThan(0);
+      expect(screen.getAllByTitle("Italic").length).toBeGreaterThan(0);
+      expect(screen.getAllByTitle("Strikethrough").length).toBeGreaterThan(0);
+      expect(screen.getAllByTitle("Bullet List").length).toBeGreaterThan(0);
+      expect(screen.getAllByTitle("Ordered List").length).toBeGreaterThan(0);
+      expect(screen.getAllByTitle("Undo").length).toBeGreaterThan(0);
+      expect(screen.getAllByTitle("Redo").length).toBeGreaterThan(0);
     });
 
     it("renders the editor content area", () => {
@@ -135,14 +132,20 @@ describe("MinutesEditor", () => {
     it("renders toolbar dividers", () => {
       const { container } = render(<MinutesEditor {...defaultProps} />);
       const dividers = container.querySelectorAll(".mx-2.h-5.w-px.bg-border");
-      expect(dividers.length).toBe(2);
+      expect(dividers.length).toBe(3); // 3 dividers: after headings, after formatting, after lists
     });
   });
 
   describe("toolbar buttons", () => {
+    // Helper to get button by title (first matching element which is the button)
+    const getButtonByTitle = (title: string) => {
+      const elements = screen.getAllByTitle(title);
+      return elements.find((el) => el.tagName === "BUTTON") || elements[0];
+    };
+
     it("calls toggleBold when bold button is clicked", () => {
       render(<MinutesEditor {...defaultProps} />);
-      fireEvent.click(screen.getByTitle("Bold"));
+      fireEvent.click(getButtonByTitle("Bold"));
       expect(mockEditor.chain).toHaveBeenCalled();
       expect(mockChainMethods.focus).toHaveBeenCalled();
       expect(mockChainMethods.toggleBold).toHaveBeenCalled();
@@ -151,46 +154,52 @@ describe("MinutesEditor", () => {
 
     it("calls toggleItalic when italic button is clicked", () => {
       render(<MinutesEditor {...defaultProps} />);
-      fireEvent.click(screen.getByTitle("Italic"));
+      fireEvent.click(getButtonByTitle("Italic"));
       expect(mockChainMethods.toggleItalic).toHaveBeenCalled();
     });
 
     it("calls toggleStrike when strikethrough button is clicked", () => {
       render(<MinutesEditor {...defaultProps} />);
-      fireEvent.click(screen.getByTitle("Strikethrough"));
+      fireEvent.click(getButtonByTitle("Strikethrough"));
       expect(mockChainMethods.toggleStrike).toHaveBeenCalled();
     });
 
     it("calls toggleBulletList when bullet list button is clicked", () => {
       render(<MinutesEditor {...defaultProps} />);
-      fireEvent.click(screen.getByTitle("Bullet List"));
+      fireEvent.click(getButtonByTitle("Bullet List"));
       expect(mockChainMethods.toggleBulletList).toHaveBeenCalled();
     });
 
     it("calls toggleOrderedList when ordered list button is clicked", () => {
       render(<MinutesEditor {...defaultProps} />);
-      fireEvent.click(screen.getByTitle("Ordered List"));
+      fireEvent.click(getButtonByTitle("Ordered List"));
       expect(mockChainMethods.toggleOrderedList).toHaveBeenCalled();
     });
 
     it("calls undo when undo button is clicked", () => {
       render(<MinutesEditor {...defaultProps} />);
-      fireEvent.click(screen.getByTitle("Undo"));
+      fireEvent.click(getButtonByTitle("Undo"));
       expect(mockChainMethods.undo).toHaveBeenCalled();
     });
 
     it("calls redo when redo button is clicked", () => {
       render(<MinutesEditor {...defaultProps} />);
-      fireEvent.click(screen.getByTitle("Redo"));
+      fireEvent.click(getButtonByTitle("Redo"));
       expect(mockChainMethods.redo).toHaveBeenCalled();
     });
   });
 
   describe("button active states", () => {
+    // Helper to get button by title (first matching element which is the button)
+    const getButtonByTitle = (title: string) => {
+      const elements = screen.getAllByTitle(title);
+      return elements.find((el) => el.tagName === "BUTTON") || elements[0];
+    };
+
     it("applies active styling when bold is active", () => {
       mockEditor.isActive = vi.fn((type: string) => type === "bold");
       render(<MinutesEditor {...defaultProps} />);
-      const boldButton = screen.getByTitle("Bold");
+      const boldButton = getButtonByTitle("Bold");
       expect(boldButton.className).toContain("bg-primary/10");
       expect(boldButton.className).toContain("text-primary");
     });
@@ -198,37 +207,43 @@ describe("MinutesEditor", () => {
     it("applies active styling when italic is active", () => {
       mockEditor.isActive = vi.fn((type: string) => type === "italic");
       render(<MinutesEditor {...defaultProps} />);
-      const italicButton = screen.getByTitle("Italic");
+      const italicButton = getButtonByTitle("Italic");
       expect(italicButton.className).toContain("bg-primary/10");
     });
 
     it("applies active styling when strike is active", () => {
       mockEditor.isActive = vi.fn((type: string) => type === "strike");
       render(<MinutesEditor {...defaultProps} />);
-      const strikeButton = screen.getByTitle("Strikethrough");
+      const strikeButton = getButtonByTitle("Strikethrough");
       expect(strikeButton.className).toContain("bg-primary/10");
     });
 
     it("applies active styling when bulletList is active", () => {
       mockEditor.isActive = vi.fn((type: string) => type === "bulletList");
       render(<MinutesEditor {...defaultProps} />);
-      const bulletListButton = screen.getByTitle("Bullet List");
+      const bulletListButton = getButtonByTitle("Bullet List");
       expect(bulletListButton.className).toContain("bg-primary/10");
     });
 
     it("applies active styling when orderedList is active", () => {
       mockEditor.isActive = vi.fn((type: string) => type === "orderedList");
       render(<MinutesEditor {...defaultProps} />);
-      const orderedListButton = screen.getByTitle("Ordered List");
+      const orderedListButton = getButtonByTitle("Ordered List");
       expect(orderedListButton.className).toContain("bg-primary/10");
     });
   });
 
   describe("undo/redo disabled states", () => {
+    // Helper to get button by title (first matching element which is the button)
+    const getButtonByTitle = (title: string) => {
+      const elements = screen.getAllByTitle(title);
+      return elements.find((el) => el.tagName === "BUTTON") || elements[0];
+    };
+
     it("disables undo button when undo is not available", () => {
       mockCanMethods.undo.mockReturnValue(false);
       render(<MinutesEditor {...defaultProps} />);
-      const undoButton = screen.getByTitle("Undo");
+      const undoButton = getButtonByTitle("Undo");
       expect(undoButton).toBeDisabled();
       expect(undoButton.className).toContain("opacity-50");
       expect(undoButton.className).toContain("cursor-not-allowed");
@@ -237,21 +252,21 @@ describe("MinutesEditor", () => {
     it("disables redo button when redo is not available", () => {
       mockCanMethods.redo.mockReturnValue(false);
       render(<MinutesEditor {...defaultProps} />);
-      const redoButton = screen.getByTitle("Redo");
+      const redoButton = getButtonByTitle("Redo");
       expect(redoButton).toBeDisabled();
     });
 
     it("enables undo button when undo is available", () => {
       mockCanMethods.undo.mockReturnValue(true);
       render(<MinutesEditor {...defaultProps} />);
-      const undoButton = screen.getByTitle("Undo");
+      const undoButton = getButtonByTitle("Undo");
       expect(undoButton).not.toBeDisabled();
     });
 
     it("enables redo button when redo is available", () => {
       mockCanMethods.redo.mockReturnValue(true);
       render(<MinutesEditor {...defaultProps} />);
-      const redoButton = screen.getByTitle("Redo");
+      const redoButton = getButtonByTitle("Redo");
       expect(redoButton).not.toBeDisabled();
     });
   });
@@ -261,11 +276,13 @@ describe("MinutesEditor", () => {
       const onChange = vi.fn();
       render(<MinutesEditor {...defaultProps} onChange={onChange} />);
 
-      mockEditor.getText.mockReturnValue("Test content");
+      // Component uses getHTML() and converts to markdown
+      mockEditor.getHTML.mockReturnValue("<p>Test content</p>");
       if (onUpdateCallback) {
         onUpdateCallback({ editor: mockEditor });
       }
 
+      // turndownService converts <p>Test content</p> to "Test content"
       expect(onChange).toHaveBeenCalledWith("Test content");
     });
 
@@ -273,7 +290,7 @@ describe("MinutesEditor", () => {
       const onChange = vi.fn();
       render(<MinutesEditor {...defaultProps} onChange={onChange} />);
 
-      mockEditor.getText.mockReturnValue("");
+      mockEditor.getHTML.mockReturnValue("");
       if (onUpdateCallback) {
         onUpdateCallback({ editor: mockEditor });
       }
@@ -400,43 +417,47 @@ describe("MinutesEditor", () => {
   });
 
   describe("content synchronization", () => {
-    it("updates editor content when prop changes and editor is not focused", async () => {
-      const { rerender } = render(<MinutesEditor {...defaultProps} content="Initial content" />);
-
-      mockEditor.isFocused = false;
-      mockEditor.getText.mockReturnValue("Initial content");
-
-      rerender(<MinutesEditor {...defaultProps} content="Updated content" />);
+    it("sets content on initial render with content prop", async () => {
+      render(<MinutesEditor {...defaultProps} content="Initial content" />);
 
       await waitFor(() => {
-        expect(mockEditor.commands.setContent).toHaveBeenCalledWith("Updated content");
+        // Component converts markdown to HTML and calls setContent
+        expect(mockEditor.commands.setContent).toHaveBeenCalled();
       });
     });
 
-    it("does not update editor content when editor is focused", async () => {
-      mockEditor.isFocused = true;
-      mockEditor.getText.mockReturnValue("Initial content");
-
+    it("only loads content once (initial load)", async () => {
       const { rerender } = render(<MinutesEditor {...defaultProps} content="Initial content" />);
 
+      await waitFor(() => {
+        expect(mockEditor.commands.setContent).toHaveBeenCalled();
+      });
+
+      // Clear mock to track subsequent calls
+      mockEditor.commands.setContent.mockClear();
+
+      // Rerender with new content - should NOT call setContent again (prioritizes user edits)
       rerender(<MinutesEditor {...defaultProps} content="Updated content" />);
 
-      await waitFor(() => {
-        expect(mockEditor.commands.setContent).not.toHaveBeenCalled();
-      });
+      // Give it time to potentially call setContent
+      await waitFor(
+        () => {
+          expect(mockEditor.commands.setContent).not.toHaveBeenCalled();
+        },
+        { timeout: 100 },
+      );
     });
 
-    it("does not update editor content when content matches current", async () => {
-      mockEditor.isFocused = false;
-      mockEditor.getText.mockReturnValue("Same content");
+    it("does not set empty content", async () => {
+      render(<MinutesEditor {...defaultProps} content="" />);
 
-      const { rerender } = render(<MinutesEditor {...defaultProps} content="Same content" />);
-
-      rerender(<MinutesEditor {...defaultProps} content="Same content" />);
-
-      await waitFor(() => {
-        expect(mockEditor.commands.setContent).not.toHaveBeenCalled();
-      });
+      await waitFor(
+        () => {
+          // Empty content should not trigger setContent
+          expect(mockEditor.commands.setContent).not.toHaveBeenCalled();
+        },
+        { timeout: 100 },
+      );
     });
   });
 
