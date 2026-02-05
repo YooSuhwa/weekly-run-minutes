@@ -189,7 +189,8 @@ describe("LiveMeetingPage", () => {
   describe("Recording Indicator", () => {
     it("shows recording indicator when recording", () => {
       renderWithProviders(<LiveMeetingPage />);
-      expect(screen.getByText(/녹음 중/)).toBeInTheDocument();
+      // Recording indicator shows "REC" followed by duration
+      expect(screen.getByText(/REC/)).toBeInTheDocument();
     });
 
     it("displays formatted duration", () => {

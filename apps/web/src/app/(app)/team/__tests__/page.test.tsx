@@ -73,6 +73,49 @@ vi.mock("@/components/ui/toast", () => ({
   useToast: () => ({ success: mockToastSuccess, error: vi.fn() }),
 }));
 
+// Mock Weeky component
+vi.mock("@/components/weeky/weeky", () => ({
+  Weeky: ({ message }: { message?: string }) => <div data-testid="weeky">{message}</div>,
+}));
+
+// Mock @dnd-kit
+vi.mock("@dnd-kit/core", () => ({
+  DndContext: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  closestCenter: vi.fn(),
+  KeyboardSensor: vi.fn(),
+  PointerSensor: vi.fn(),
+  useSensor: vi.fn(),
+  useSensors: vi.fn(() => []),
+}));
+
+vi.mock("@dnd-kit/sortable", () => ({
+  SortableContext: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  sortableKeyboardCoordinates: vi.fn(),
+  useSortable: () => ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: vi.fn(),
+    transform: null,
+    transition: null,
+    isDragging: false,
+  }),
+  verticalListSortingStrategy: vi.fn(),
+  arrayMove: vi.fn((arr, from, to) => {
+    const result = [...arr];
+    const [removed] = result.splice(from, 1);
+    result.splice(to, 0, removed);
+    return result;
+  }),
+}));
+
+vi.mock("@dnd-kit/utilities", () => ({
+  CSS: {
+    Transform: {
+      toString: vi.fn(() => ""),
+    },
+  },
+}));
+
 // Mock API hooks
 vi.mock("@/lib/api/__generated__/teams/teams", () => ({
   useListTeamsApiV1TeamsGet: mockUseListTeams,
@@ -82,10 +125,12 @@ vi.mock("@/lib/api/__generated__/teams/teams", () => ({
   useRemoveTeamMemberApiV1TeamsTeamIdMembersMemberIdDelete: mockUseRemoveMember,
 }));
 
+import { selectedTeamIdAtom } from "@/atoms/team";
 import TeamPage from "../page";
 
 function renderWithProviders(ui: ReactNode) {
   const store = createStore();
+  store.set(selectedTeamIdAtom, "t1");
   return render(<Provider store={store}>{ui}</Provider>);
 }
 
@@ -434,57 +479,23 @@ describe("TeamPage", () => {
       });
     });
 
-    it("updates member locally when no teamId exists", async () => {
-      const user = userEvent.setup();
+    it("shows select team message when no teamId exists", async () => {
+      // Create store with selectedTeamIdAtom explicitly set to null
+      const store = createStore();
+      store.set(selectedTeamIdAtom, null);
 
-      // Return empty teams to have no teamId
-      mockUseListTeams.mockReturnValue({ data: [] });
-      mockUseGetTeam.mockReturnValue({ data: undefined });
+      render(
+        <Provider store={store}>
+          <TeamPage />
+        </Provider>,
+      );
 
-      // Set up mock with initial members in atom (simulating local-only state)
-      const mockUpdateMemberFn = vi.fn((options: any) => ({
-        mutate: vi.fn(),
-      }));
-      mockUseUpdateMember.mockImplementation(mockUpdateMemberFn);
-
-      renderWithProviders(<TeamPage />);
-
-      // First add a member locally
-      await user.click(screen.getByText("팀원 추가"));
-      const input = screen.getByPlaceholderText("이름 입력");
-      await user.type(input, "로컬팀원");
-      await user.click(screen.getByText("추가"));
-
-      await waitFor(() => {
-        expect(mockToastSuccess).toHaveBeenCalledWith("추가되었습니다");
-      });
-
-      // Now edit that member
-      vi.clearAllMocks();
-      const editButtons = screen.getAllByRole("button");
-      const editButton = editButtons.find((btn) => btn.querySelector("svg.lucide-pencil"));
-      if (editButton) {
-        await user.click(editButton);
-      }
-
-      await waitFor(() => {
-        const inputs = screen.getAllByRole("textbox");
-        const editInput = inputs.find((input) => (input as HTMLInputElement).value === "로컬팀원");
-        expect(editInput).toBeInTheDocument();
-      });
-
-      const inputs = screen.getAllByRole("textbox");
-      const editInput = inputs.find((input) => (input as HTMLInputElement).value === "로컬팀원");
-      if (editInput) {
-        await user.clear(editInput);
-        await user.type(editInput, "수정된로컬팀원");
-      }
-
-      await user.click(screen.getByText("저장"));
-
-      await waitFor(() => {
-        expect(mockToastSuccess).toHaveBeenCalledWith("수정되었습니다");
-      });
+      // When no teamId, page shows message to select a team
+      expect(screen.getByTestId("weeky")).toHaveTextContent(
+        "팀원을 관리하려면 팀을 먼저 선택해주세요",
+      );
+      // Member management UI should not be visible
+      expect(screen.queryByText("팀원 추가")).not.toBeInTheDocument();
     });
   });
 
@@ -494,7 +505,7 @@ describe("TeamPage", () => {
       renderWithProviders(<TeamPage />);
 
       const deleteButtons = screen.getAllByRole("button");
-      const deleteButton = deleteButtons.find((btn) => btn.querySelector("svg.lucide-trash-2"));
+      const deleteButton = deleteButtons.find((btn) => btn.querySelector("svg.lucide-trash2"));
       expect(deleteButton).toBeDefined();
       if (deleteButton) {
         await user.click(deleteButton);
@@ -519,7 +530,7 @@ describe("TeamPage", () => {
 
       renderWithProviders(<TeamPage />);
       const deleteButtons = screen.getAllByRole("button");
-      const deleteButton = deleteButtons.find((btn) => btn.querySelector("svg.lucide-trash-2"));
+      const deleteButton = deleteButtons.find((btn) => btn.querySelector("svg.lucide-trash2"));
       if (deleteButton) {
         await user.click(deleteButton);
       }
@@ -551,7 +562,7 @@ describe("TeamPage", () => {
       // Now delete that member
       vi.clearAllMocks();
       const deleteButtons = screen.getAllByRole("button");
-      const deleteButton = deleteButtons.find((btn) => btn.querySelector("svg.lucide-trash-2"));
+      const deleteButton = deleteButtons.find((btn) => btn.querySelector("svg.lucide-trash2"));
       if (deleteButton) {
         await user.click(deleteButton);
       }

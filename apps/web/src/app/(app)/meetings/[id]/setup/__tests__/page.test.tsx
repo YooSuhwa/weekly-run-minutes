@@ -50,6 +50,11 @@ vi.mock("@/components/ui/toast", () => ({
 // Mock meetings API
 vi.mock("@/lib/api/__generated__/meetings/meetings", () => ({
   useGetMeetingApiV1MeetingsMeetingIdGet: () => ({ data: { meeting_type: "weekly_report" } }),
+  useUpdateMeetingApiV1MeetingsMeetingIdPut: () => ({
+    mutate: vi.fn(),
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
 }));
 
 // Mock teams API
@@ -159,10 +164,57 @@ vi.mock("@/components/ui/progress-bar", () => ({
   ),
 }));
 
+// Mock Weeky component
+vi.mock("@/components/weeky/weeky", () => ({
+  Weeky: ({ message }: { message?: string }) => <div data-testid="weeky">{message}</div>,
+}));
+
+// Mock @dnd-kit
+vi.mock("@dnd-kit/core", () => ({
+  DndContext: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  closestCenter: vi.fn(),
+  KeyboardSensor: vi.fn(),
+  PointerSensor: vi.fn(),
+  useSensor: vi.fn(),
+  useSensors: vi.fn(() => []),
+}));
+
+vi.mock("@dnd-kit/sortable", () => ({
+  SortableContext: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  sortableKeyboardCoordinates: vi.fn(),
+  useSortable: () => ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: vi.fn(),
+    transform: null,
+    transition: null,
+    isDragging: false,
+  }),
+  verticalListSortingStrategy: vi.fn(),
+  arrayMove: vi.fn((arr, from, to) => {
+    const result = [...arr];
+    const [removed] = result.splice(from, 1);
+    result.splice(to, 0, removed);
+    return result;
+  }),
+}));
+
+vi.mock("@dnd-kit/utilities", () => ({
+  CSS: {
+    Transform: {
+      toString: vi.fn(() => ""),
+    },
+  },
+}));
+
+import { selectedTeamIdAtom, teamMembersAtom } from "@/atoms/team";
 import MeetingSetupPage from "../page";
 
 function renderWithProviders(ui: ReactNode) {
   const store = createStore();
+  // Set the team ID and members for the page to work properly
+  store.set(selectedTeamIdAtom, "team-1");
+  store.set(teamMembersAtom, mockTeamData.members);
   return render(<Provider store={store}>{ui}</Provider>);
 }
 
@@ -182,14 +234,15 @@ describe("MeetingSetupPage", () => {
   describe("Rendering", () => {
     it("renders page title and subtitle", () => {
       renderWithProviders(<MeetingSetupPage />);
-      expect(screen.getByText("회의 설정")).toBeInTheDocument();
-      expect(screen.getByText("녹음 파일을 업로드하고 설정을 완료하세요")).toBeInTheDocument();
+      // Weeky component shows the message instead of static title
+      expect(screen.getByText(/회의록을 생성할 준비를 해볼까요?/)).toBeInTheDocument();
     });
 
     it("renders weekly report section with Confluence input", () => {
       renderWithProviders(<MeetingSetupPage />);
-      expect(screen.getByText("주간업무록 (선택)")).toBeInTheDocument();
-      expect(screen.getByPlaceholderText("Confluence 페이지 ID 입력")).toBeInTheDocument();
+      // Title is split into "주간업무록" and "(선택)"
+      expect(screen.getByText("주간업무록")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Confluence 페이지 URL 또는 ID 입력")).toBeInTheDocument();
       expect(screen.getByText("불러오기")).toBeInTheDocument();
     });
 
@@ -215,16 +268,18 @@ describe("MeetingSetupPage", () => {
   describe("Attendee Selection", () => {
     it("renders all team members as selectable buttons", () => {
       renderWithProviders(<MeetingSetupPage />);
-      expect(screen.getByText("Lee")).toBeInTheDocument();
-      expect(screen.getByText("Sun")).toBeInTheDocument();
-      expect(screen.getByText("Choi")).toBeInTheDocument();
+      // Use getByRole to specifically select buttons, not spans in attendee list
+      expect(screen.getByRole("button", { name: "Lee" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Sun" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Choi" })).toBeInTheDocument();
     });
 
     it("toggles member selection on click", async () => {
       const user = userEvent.setup();
       renderWithProviders(<MeetingSetupPage />);
 
-      const leeButton = screen.getByText("Lee");
+      // Use getByRole to specifically select the toggle button
+      const leeButton = screen.getByRole("button", { name: "Lee" });
 
       // Initially selected (all members selected by default based on useEffect)
       // Click to deselect
@@ -246,7 +301,7 @@ describe("MeetingSetupPage", () => {
       const user = userEvent.setup();
       renderWithProviders(<MeetingSetupPage />);
 
-      const input = screen.getByPlaceholderText("Confluence 페이지 ID 입력");
+      const input = screen.getByPlaceholderText("Confluence 페이지 URL 또는 ID 입력");
       await user.type(input, "12345678");
 
       const loadButton = screen.getByText("불러오기");
@@ -257,7 +312,7 @@ describe("MeetingSetupPage", () => {
       const user = userEvent.setup();
       renderWithProviders(<MeetingSetupPage />);
 
-      const input = screen.getByPlaceholderText("Confluence 페이지 ID 입력");
+      const input = screen.getByPlaceholderText("Confluence 페이지 URL 또는 ID 입력");
       await user.type(input, "12345678");
 
       const loadButton = screen.getByText("불러오기");
@@ -269,19 +324,20 @@ describe("MeetingSetupPage", () => {
       });
     });
 
-    it("shows success toast on successful load", async () => {
+    it("shows success message on successful load", async () => {
       const user = userEvent.setup();
       renderWithProviders(<MeetingSetupPage />);
 
-      const input = screen.getByPlaceholderText("Confluence 페이지 ID 입력");
+      const input = screen.getByPlaceholderText("Confluence 페이지 URL 또는 ID 입력");
       await user.type(input, "12345678");
       await user.click(screen.getByText("불러오기"));
 
-      // Simulate success callback
+      // Simulate success callback - the implementation updates state, not toast
       loadWeeklyReportCallbacks.onSuccess?.();
 
+      // The success state is shown through UI message (not toast)
       await waitFor(() => {
-        expect(mockToastSuccess).toHaveBeenCalledWith("주간업무록을 불러왔습니다");
+        expect(screen.getByText("주간업무록이 연결되었습니다")).toBeInTheDocument();
       });
     });
 
@@ -289,7 +345,7 @@ describe("MeetingSetupPage", () => {
       const user = userEvent.setup();
       renderWithProviders(<MeetingSetupPage />);
 
-      const input = screen.getByPlaceholderText("Confluence 페이지 ID 입력");
+      const input = screen.getByPlaceholderText("Confluence 페이지 URL 또는 ID 입력");
       await user.type(input, "12345678");
       await user.click(screen.getByText("불러오기"));
 
@@ -385,7 +441,7 @@ describe("MeetingSetupPage", () => {
       await waitFor(() => {
         expect(mockToastSuccess).toHaveBeenCalledWith("파일 업로드 완료");
       });
-      expect(mockStartTranscriptionMutate).toHaveBeenCalledWith({ meetingId: "meeting-123" });
+      expect(mockStartTranscriptionMutate).toHaveBeenCalledWith({ meetingId: "meeting-123", data: null });
     });
 
     it("navigates to processing page on transcription success", async () => {
@@ -473,7 +529,7 @@ describe("MeetingSetupPage", () => {
       const user = userEvent.setup();
       renderWithProviders(<MeetingSetupPage />);
 
-      const input = screen.getByPlaceholderText("Confluence 페이지 ID 입력");
+      const input = screen.getByPlaceholderText("Confluence 페이지 URL 또는 ID 입력");
       await user.type(input, "12345678");
       await user.click(screen.getByText("불러오기"));
 
