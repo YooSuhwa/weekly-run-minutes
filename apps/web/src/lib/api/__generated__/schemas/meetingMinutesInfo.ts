@@ -13,5 +13,6 @@ export interface MeetingMinutesInfo {
   id: string;
   ai_model: string;
   is_edited: boolean;
+  confluence_synced: boolean;
   created_at: string;
 }

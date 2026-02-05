@@ -15,7 +15,6 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { Weeky } from "@/components/weeky/weeky";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { selectedTeamIdAtom } from "@/atoms/team";
@@ -31,6 +30,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
+import { Weeky } from "@/components/weeky/weeky";
 import type {
   VocabularyBulkImportItem,
   VocabularyCategory,
@@ -110,9 +110,13 @@ export default function SettingsPage() {
   const [newTeamName, setNewTeamName] = useState("");
   const [newTeamPassword, setNewTeamPassword] = useState("");
 
-  // Get team ID from atom or fallback to first team
-  const { data: teams, refetch: refetchTeams } = useListTeamsApiV1TeamsGet();
-  const teamId = selectedTeamId ?? teams?.[0]?.id ?? "";
+  // Get team ID from atom (no fallback - team selection is required)
+  const {
+    data: teams,
+    isLoading: isLoadingTeams,
+    refetch: refetchTeams,
+  } = useListTeamsApiV1TeamsGet();
+  const teamId = selectedTeamId ?? "";
 
   // Fetch team details to sync settings
   const { data: teamData, refetch: refetchTeam } = useGetTeamApiV1TeamsTeamIdGet(teamId, {
@@ -367,7 +371,11 @@ export default function SettingsPage() {
     return (
       <div className="mx-auto max-w-4xl px-4 py-8">
         <div className="flex flex-col items-center justify-center py-16">
-          <Weeky expression="questioning" size="lg" message="설정을 관리하려면 팀을 먼저 선택해주세요" />
+          <Weeky
+            expression="questioning"
+            size="lg"
+            message="설정을 관리하려면 팀을 먼저 선택해주세요"
+          />
         </div>
       </div>
     );
@@ -391,8 +399,7 @@ export default function SettingsPage() {
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          <Users className="h-4 w-4" />
-          팀 관리
+          <Users className="h-4 w-4" />팀 관리
         </button>
         <button
           type="button"
@@ -443,7 +450,7 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label className="mb-1 block text-sm font-medium">팀 이름</label>
+                <span className="mb-1 block text-sm font-medium">팀 이름</span>
                 <p className="text-lg font-semibold">{teamData?.name ?? "-"}</p>
               </div>
 
@@ -451,7 +458,9 @@ export default function SettingsPage() {
                 <div>
                   <p className="font-medium">비밀번호</p>
                   <p className="text-sm text-muted-foreground">
-                    {teamData?.has_password ? "비밀번호가 설정되어 있습니다" : "비밀번호가 설정되지 않았습니다"}
+                    {teamData?.has_password
+                      ? "비밀번호가 설정되어 있습니다"
+                      : "비밀번호가 설정되지 않았습니다"}
                   </p>
                 </div>
                 <Button variant="outline" size="sm" onClick={() => setShowPasswordDialog(true)}>
@@ -465,13 +474,8 @@ export default function SettingsPage() {
                 <p className="mb-3 text-sm text-muted-foreground">
                   팀을 삭제하면 모든 회의, 회의록, 설정이 영구적으로 삭제됩니다.
                 </p>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => setShowDeleteDialog(true)}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  팀 삭제
+                <Button variant="destructive" size="sm" onClick={() => setShowDeleteDialog(true)}>
+                  <Trash2 className="mr-2 h-4 w-4" />팀 삭제
                 </Button>
               </div>
             </CardContent>
@@ -485,8 +489,7 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent>
               <Button onClick={() => setShowCreateDialog(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                새 팀 만들기
+                <Plus className="mr-2 h-4 w-4" />새 팀 만들기
               </Button>
             </CardContent>
           </Card>
@@ -498,28 +501,34 @@ export default function SettingsPage() {
               <CardDescription>등록된 모든 팀 목록</CardDescription>
             </CardHeader>
             <CardContent>
-              {teams && teams.length > 0 ? (
+              {isLoadingTeams ? (
+                <p className="py-4 text-center text-muted-foreground">로딩 중...</p>
+              ) : teams && teams.length > 0 ? (
                 <div className="divide-y divide-border rounded-lg border">
                   {teams.map((team) => (
-                    <div
+                    <button
+                      type="button"
                       key={team.id}
-                      className="flex items-center justify-between px-4 py-3"
+                      onClick={() => setSelectedTeamId(team.id)}
+                      className={`flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-muted/50 ${
+                        team.id === selectedTeamId ? "bg-muted/30" : ""
+                      }`}
                     >
                       <div className="flex items-center gap-3">
                         <Users className="h-5 w-5 text-muted-foreground" />
-                        <span className={team.id === teamId ? "font-medium" : ""}>
+                        <span className={team.id === selectedTeamId ? "font-medium" : ""}>
                           {team.name}
                         </span>
-                        {team.id === teamId && (
+                        {team.id === selectedTeamId && (
                           <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                            현재 팀
+                            선택됨
                           </span>
                         )}
                       </div>
                       <span className="text-sm text-muted-foreground">
                         {new Date(team.created_at).toLocaleDateString("ko-KR")}
                       </span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               ) : (
@@ -1095,8 +1104,7 @@ SDK,에스디케이,abbreviation
             <DialogTitle>팀 삭제</DialogTitle>
             <DialogDescription>
               정말로 &quot;{teamData?.name}&quot; 팀을 삭제하시겠습니까?
-              <br />
-              이 작업은 되돌릴 수 없으며, 모든 회의와 회의록이 삭제됩니다.
+              <br />이 작업은 되돌릴 수 없으며, 모든 회의와 회의록이 삭제됩니다.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

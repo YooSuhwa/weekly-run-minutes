@@ -207,6 +207,66 @@ class TestCreateMeeting:
         )
         assert response.status_code == 422
 
+    @pytest.mark.asyncio
+    async def test_create_meeting_without_date_and_title(self, client: AsyncClient, team_id: str):
+        """Should auto-generate date (today) and title when not provided."""
+        from datetime import date
+
+        response = await client.post(
+            "/api/v1/meetings",
+            json={
+                "team_id": team_id,
+                # meeting_date and title not provided
+            },
+        )
+        assert response.status_code == 201
+        data = response.json()
+
+        # Check date is today
+        today = date.today()
+        assert data["meeting_date"] == today.isoformat()
+
+        # Check title format: 주간회의 (yy/m/d)
+        expected_date_str = f"{today.year % 100}/{today.month}/{today.day}"
+        assert data["title"] == f"주간회의 ({expected_date_str})"
+
+    @pytest.mark.asyncio
+    async def test_create_general_meeting_without_title(self, client: AsyncClient, team_id: str):
+        """Should auto-generate title for general meetings."""
+        from datetime import date
+
+        response = await client.post(
+            "/api/v1/meetings",
+            json={
+                "team_id": team_id,
+                "meeting_date": "2025-01-05",
+                "meeting_type": "general",
+                # title not provided
+            },
+        )
+        assert response.status_code == 201
+        data = response.json()
+
+        # Check title format: 일반회의 (yy/m/d)
+        assert data["title"] == "일반회의 (25/1/5)"
+
+    @pytest.mark.asyncio
+    async def test_create_meeting_with_custom_date_and_title(self, client: AsyncClient, team_id: str):
+        """Should use provided date and title when specified."""
+        response = await client.post(
+            "/api/v1/meetings",
+            json={
+                "team_id": team_id,
+                "meeting_date": "2025-01-15",
+                "title": "프로젝트 킥오프 미팅",
+            },
+        )
+        assert response.status_code == 201
+        data = response.json()
+
+        assert data["meeting_date"] == "2025-01-15"
+        assert data["title"] == "프로젝트 킥오프 미팅"
+
 
 class TestGetMeeting:
     @pytest.mark.asyncio

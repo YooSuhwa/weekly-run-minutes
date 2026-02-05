@@ -281,7 +281,7 @@ class TestProcessTranscription:
             mock_stt.transcribe_and_store = AsyncMock(return_value=mock_result)
             mock_stt_cls.return_value = mock_stt
 
-            await process_transcription(meeting_id)
+            await process_transcription(meeting_id, enable_chat_filter=False)
 
         # Verify meeting status was updated to TRANSCRIBED
         result = await db_session.execute(

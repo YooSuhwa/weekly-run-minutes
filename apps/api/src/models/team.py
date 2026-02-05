@@ -10,28 +10,26 @@ from src.models.base import BaseModel
 
 if TYPE_CHECKING:
     from src.models.meeting import Meeting
+    from src.models.team_settings import TeamSettings
     from src.models.vocabulary import Vocabulary
 
 
 class Team(BaseModel):
-    """Team model - 팀 정보."""
+    """Team model - 팀 정보 (인증 정보만 포함, 설정은 TeamSettings로 분리)."""
 
     __tablename__ = "teams"
 
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    # Confluence integration
-    confluence_base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    confluence_space_key: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    confluence_username: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    confluence_token: Mapped[str | None] = mapped_column(String(500), nullable=True)
-
-    # Chat filtering settings (P2)
-    filtering_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
-    filtering_confidence_threshold: Mapped[float] = mapped_column(default=0.7, nullable=False)
-
     # Relationships
+    settings: Mapped["TeamSettings | None"] = relationship(
+        "TeamSettings",
+        back_populates="team",
+        uselist=False,
+        cascade="all, delete-orphan",
+        lazy="joined",
+    )
     members: Mapped[list["TeamMember"]] = relationship(
         "TeamMember",
         back_populates="team",

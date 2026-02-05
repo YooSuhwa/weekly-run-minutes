@@ -17,6 +17,7 @@ export interface MinutesState {
   saveStatus: MinutesSaveStatus;
   corrections: CorrectionItem[];
   lastSavedAt: string | null;
+  confluenceSynced: boolean;
 }
 
 const initialState: MinutesState = {
@@ -25,6 +26,7 @@ const initialState: MinutesState = {
   saveStatus: "idle",
   corrections: [],
   lastSavedAt: null,
+  confluenceSynced: false,
 };
 
 export const minutesAtom = atom<MinutesState>(initialState);

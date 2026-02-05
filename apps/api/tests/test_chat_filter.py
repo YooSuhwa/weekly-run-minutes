@@ -426,7 +426,7 @@ class TestFilterReasonEnum:
 
     def test_all_filter_reasons_exist(self):
         """Should have all expected filter reasons."""
-        expected = {"casual_talk", "greeting", "off_topic", "personal", "small_talk"}
+        expected = {"casual_talk", "greeting", "off_topic", "personal", "small_talk", "gossip", "noise"}
         actual = {r.value for r in FilterReason}
         assert actual == expected
 

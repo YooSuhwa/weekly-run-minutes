@@ -9,6 +9,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from src.lib.config import settings
 from src.lib.logging import get_logger
 from src.models.filtered_content import FilterReason
+from src.prompts import load_prompt
 
 logger = get_logger(__name__)
 
@@ -50,59 +51,9 @@ class BatchFilterResult:
     filtered: list[FilterResult] = field(default_factory=list)
 
 
-# System prompt for chat filtering
-FILTER_SYSTEM_PROMPT = """당신은 회의 내용을 분류하는 전문가입니다.
-주어진 발언들이 업무 관련인지 잡담인지 분류합니다.
-
-분류 기준:
-1. **업무 관련 (work_related: true):**
-   - 프로젝트, 업무, 일정 관련 논의
-   - 기술적 논의, 문제 해결
-   - 팀 업무, 협업 관련
-   - 의사결정, 액션아이템 논의
-   - 업무 현황 보고
-
-2. **비업무/잡담 (work_related: false):**
-   - 인사말, 안부 (예: "안녕하세요", "주말 잘 보내셨어요?")
-   - 날씨, 음식, 개인적인 이야기
-   - 농담, 유머
-   - 회의 시작/종료 시 소소한 대화
-   - 주제와 무관한 이야기
-
-filter_reason 값:
-- "casual_talk": 일반 잡담
-- "greeting": 인사말
-- "off_topic": 주제와 무관
-- "personal": 개인적인 이야기
-- "small_talk": 소소한 대화
-
-응답 형식 (JSON):
-```json
-{
-  "classifications": [
-    {
-      "id": "segment_id",
-      "is_work_related": true,
-      "filter_reason": null,
-      "confidence": 0.95,
-      "explanation": "업무 현황 보고 내용"
-    },
-    {
-      "id": "segment_id2",
-      "is_work_related": false,
-      "filter_reason": "greeting",
-      "confidence": 0.9,
-      "explanation": "인사말"
-    }
-  ]
-}
-```
-
-중요:
-- confidence는 0.0~1.0 사이 값
-- 애매한 경우 업무 관련으로 분류 (보수적 필터링)
-- 업무 맥락이 조금이라도 있으면 업무 관련으로 분류
-"""
+def get_filter_system_prompt() -> str:
+    """Load the chat filter system prompt from file."""
+    return load_prompt("chat_filter_system")
 
 
 class ChatFilterService:
@@ -121,12 +72,16 @@ class ChatFilterService:
         self,
         segments: list[TranscriptSegment],
         meeting_context: str | None = None,
+        context_terms: list[str] | None = None,
+        context_instructions: str | None = None,
     ) -> BatchFilterResult:
         """Classify transcript segments as work-related or casual talk.
 
         Args:
             segments: List of transcript segments to classify
             meeting_context: Optional context about the meeting (e.g., agenda, team info)
+            context_terms: Session-level keywords that indicate work-related content
+            context_instructions: Natural language instructions for filtering
 
         Returns:
             BatchFilterResult with classified segments
@@ -138,6 +93,8 @@ class ChatFilterService:
             "Filtering transcript segments",
             model=self.model,
             segment_count=len(segments),
+            has_context_terms=bool(context_terms),
+            has_context_instructions=bool(context_instructions),
         )
 
         # Build user prompt with segments
@@ -146,9 +103,25 @@ class ChatFilterService:
             for s in segments
         )
 
+        # Build context section
+        context_parts = []
+        if meeting_context:
+            context_parts.append(f"### 회의 맥락\n{meeting_context}")
+        if context_terms:
+            terms_str = ", ".join(context_terms)
+            context_parts.append(
+                f"### 세션 용어 (이 용어가 포함된 발언은 업무 관련으로 분류)\n{terms_str}"
+            )
+        if context_instructions:
+            context_parts.append(f"### 특별 지시사항\n{context_instructions}")
+
+        context_section = ""
+        if context_parts:
+            context_section = "## 컨텍스트\n" + "\n\n".join(context_parts) + "\n\n"
+
         user_prompt = f"""다음 발언들을 분류해주세요.
 
-{f"## 회의 맥락{chr(10)}{meeting_context}{chr(10)}{chr(10)}" if meeting_context else ""}## 발언 목록
+{context_section}## 발언 목록
 {segments_text}
 
 각 발언이 업무 관련인지 잡담인지 JSON 형식으로 분류해주세요.
@@ -158,7 +131,7 @@ class ChatFilterService:
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": FILTER_SYSTEM_PROMPT},
+                    {"role": "system", "content": get_filter_system_prompt()},
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.1,  # Low temperature for consistent classification
@@ -270,6 +243,8 @@ class ChatFilterService:
         text: str,
         speaker: str | None = None,
         meeting_context: str | None = None,
+        context_terms: list[str] | None = None,
+        context_instructions: str | None = None,
     ) -> FilterResult:
         """Convenience method to filter a single text segment.
 
@@ -277,6 +252,8 @@ class ChatFilterService:
             text: Text content to classify
             speaker: Optional speaker name
             meeting_context: Optional context about the meeting
+            context_terms: Session-level keywords
+            context_instructions: Natural language instructions
 
         Returns:
             FilterResult for the single segment
@@ -286,7 +263,9 @@ class ChatFilterService:
             text=text,
             speaker_name=speaker,
         )
-        result = await self.filter_segments([segment], meeting_context)
+        result = await self.filter_segments(
+            [segment], meeting_context, context_terms, context_instructions
+        )
 
         if result.filtered:
             return result.filtered[0]

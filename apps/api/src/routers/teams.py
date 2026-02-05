@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.lib.dependencies import get_db
-from src.models import Team, TeamMember
+from src.models import Team, TeamMember, TeamSettings
 from src.schemas.team import (
     TeamAuthRequest,
     TeamAuthResponse,
@@ -50,6 +50,39 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(password_bytes, hashed_bytes)
 
 
+def _build_team_response(team: Team) -> TeamWithMembers:
+    """Build TeamWithMembers response from Team model.
+
+    Flattens settings fields into the response for API compatibility.
+    """
+    settings = team.settings
+    return TeamWithMembers(
+        id=team.id,
+        name=team.name,
+        confluence_base_url=settings.confluence_base_url if settings else None,
+        confluence_space_key=settings.confluence_space_key if settings else None,
+        confluence_username=settings.confluence_username if settings else None,
+        has_confluence_token=(settings.confluence_token is not None) if settings else False,
+        has_password=team.password_hash is not None,
+        filtering_enabled=settings.filtering_enabled if settings else True,
+        filtering_confidence_threshold=settings.filtering_confidence_threshold if settings else 0.7,
+        created_at=team.created_at,
+        updated_at=team.updated_at,
+        members=[
+            TeamMemberResponse(
+                id=m.id,
+                team_id=m.team_id,
+                name=m.name,
+                presentation_order=m.presentation_order,
+                is_active=m.is_active,
+                created_at=m.created_at,
+                updated_at=m.updated_at,
+            )
+            for m in team.members
+        ],
+    )
+
+
 @router.get("", response_model=list[TeamResponse])
 async def list_teams(
     db: DB,
@@ -75,9 +108,17 @@ async def create_team(
     db: DB,
 ) -> TeamWithMembers:
     """Create a new team with optional password and members."""
+    # Create team with auth info only
     team = Team(
         name=data.name,
         password_hash=hash_password(data.password) if data.password else None,
+    )
+    db.add(team)
+    await db.flush()
+
+    # Create team settings
+    settings = TeamSettings(
+        team_id=team.id,
         confluence_base_url=data.confluence_base_url,
         confluence_space_key=data.confluence_space_key,
         confluence_username=data.confluence_username,
@@ -85,9 +126,9 @@ async def create_team(
         filtering_enabled=data.filtering_enabled,
         filtering_confidence_threshold=data.filtering_confidence_threshold,
     )
-    db.add(team)
-    await db.flush()
+    db.add(settings)
 
+    # Create team members
     if data.members:
         for member_data in data.members:
             member = TeamMember(
@@ -98,33 +139,9 @@ async def create_team(
             db.add(member)
 
     await db.commit()
-    await db.refresh(team, ["members"])
+    await db.refresh(team, ["members", "settings"])
 
-    return TeamWithMembers(
-        id=team.id,
-        name=team.name,
-        confluence_base_url=team.confluence_base_url,
-        confluence_space_key=team.confluence_space_key,
-        confluence_username=team.confluence_username,
-        has_confluence_token=team.confluence_token is not None,
-        has_password=team.password_hash is not None,
-        filtering_enabled=team.filtering_enabled,
-        filtering_confidence_threshold=team.filtering_confidence_threshold,
-        created_at=team.created_at,
-        updated_at=team.updated_at,
-        members=[
-            TeamMemberResponse(
-                id=m.id,
-                team_id=m.team_id,
-                name=m.name,
-                presentation_order=m.presentation_order,
-                is_active=m.is_active,
-                created_at=m.created_at,
-                updated_at=m.updated_at,
-            )
-            for m in team.members
-        ],
-    )
+    return _build_team_response(team)
 
 
 @router.get("/{team_id}", response_model=TeamWithMembers)
@@ -133,6 +150,7 @@ async def get_team(
     db: DB,
 ) -> TeamWithMembers:
     """Get a team by ID with members."""
+    # settings is lazy="joined", so it loads automatically
     result = await db.execute(
         select(Team).where(Team.id == team_id).options(selectinload(Team.members))
     )
@@ -143,31 +161,7 @@ async def get_team(
             detail="Team not found",
         )
 
-    return TeamWithMembers(
-        id=team.id,
-        name=team.name,
-        confluence_base_url=team.confluence_base_url,
-        confluence_space_key=team.confluence_space_key,
-        confluence_username=team.confluence_username,
-        has_confluence_token=team.confluence_token is not None,
-        has_password=team.password_hash is not None,
-        filtering_enabled=team.filtering_enabled,
-        filtering_confidence_threshold=team.filtering_confidence_threshold,
-        created_at=team.created_at,
-        updated_at=team.updated_at,
-        members=[
-            TeamMemberResponse(
-                id=m.id,
-                team_id=m.team_id,
-                name=m.name,
-                presentation_order=m.presentation_order,
-                is_active=m.is_active,
-                created_at=m.created_at,
-                updated_at=m.updated_at,
-            )
-            for m in team.members
-        ],
-    )
+    return _build_team_response(team)
 
 
 @router.put("/{team_id}", response_model=TeamWithMembers)
@@ -177,6 +171,7 @@ async def update_team(
     db: DB,
 ) -> TeamWithMembers:
     """Update a team."""
+    # settings is lazy="joined", so it loads automatically
     result = await db.execute(select(Team).where(Team.id == team_id))
     team = result.scalar_one_or_none()
     if not team:
@@ -194,7 +189,27 @@ async def update_team(
             team.password_hash = hash_password(password)
         # If password is explicitly None, keep existing password
 
-    # Update other fields
+    # Settings fields to update on team.settings
+    settings_fields = {
+        "confluence_base_url",
+        "confluence_space_key",
+        "confluence_username",
+        "confluence_token",
+        "filtering_enabled",
+        "filtering_confidence_threshold",
+    }
+
+    # Ensure team has settings (create if missing for backwards compatibility)
+    if team.settings is None:
+        team.settings = TeamSettings(team_id=team.id)
+        db.add(team.settings)
+
+    # Update settings fields
+    for field in settings_fields:
+        if field in update_data:
+            setattr(team.settings, field, update_data.pop(field))
+
+    # Update team fields (only 'name' remains)
     for field, value in update_data.items():
         setattr(team, field, value)
 
@@ -206,31 +221,7 @@ async def update_team(
     )
     updated_team = result.scalar_one()  # Safe: we know team exists after update
 
-    return TeamWithMembers(
-        id=updated_team.id,
-        name=updated_team.name,
-        confluence_base_url=updated_team.confluence_base_url,
-        confluence_space_key=updated_team.confluence_space_key,
-        confluence_username=updated_team.confluence_username,
-        has_confluence_token=updated_team.confluence_token is not None,
-        has_password=updated_team.password_hash is not None,
-        filtering_enabled=updated_team.filtering_enabled,
-        filtering_confidence_threshold=updated_team.filtering_confidence_threshold,
-        created_at=updated_team.created_at,
-        updated_at=updated_team.updated_at,
-        members=[
-            TeamMemberResponse(
-                id=m.id,
-                team_id=m.team_id,
-                name=m.name,
-                presentation_order=m.presentation_order,
-                is_active=m.is_active,
-                created_at=m.created_at,
-                updated_at=m.updated_at,
-            )
-            for m in updated_team.members
-        ],
-    )
+    return _build_team_response(updated_team)
 
 
 @router.delete("/{team_id}", status_code=status.HTTP_204_NO_CONTENT)

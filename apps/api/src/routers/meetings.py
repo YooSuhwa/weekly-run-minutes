@@ -19,6 +19,11 @@ from src.schemas.meeting import (
     MeetingWithDetails,
 )
 
+
+def format_date_for_title(d: date) -> str:
+    """Format date as yy/m/d (e.g., 25/1/5 for 2025-01-05)."""
+    return f"{d.year % 100}/{d.month}/{d.day}"
+
 # Dependency type alias
 DB = Annotated[AsyncSession, Depends(get_db)]
 
@@ -64,16 +69,35 @@ async def create_meeting(
 
     P2 Feature: Supports meeting_type for WEEKLY_REPORT or GENERAL meetings.
     GENERAL meetings can have optional agenda_items.
+
+    If meeting_date is not provided, defaults to today.
+    If title is not provided, defaults to:
+    - Weekly report: "주간회의 (yy/m/d)"
+    - General: "일반회의 (yy/m/d)" (can be updated later by AI)
     """
     # Convert agenda_items to dict format for JSON storage
     agenda_items_data = None
     if data.agenda_items:
         agenda_items_data = [item.model_dump() for item in data.agenda_items]
 
+    # Default meeting_date to today if not provided
+    meeting_date = data.meeting_date or date.today()
+
+    # Generate default title if not provided
+    if data.title:
+        title = data.title
+    else:
+        date_str = format_date_for_title(meeting_date)
+        if data.meeting_type == MeetingType.WEEKLY_REPORT:
+            title = f"주간회의 ({date_str})"
+        else:
+            title = f"일반회의 ({date_str})"
+
     meeting = Meeting(
         team_id=data.team_id,
-        meeting_date=data.meeting_date,
-        title=data.title,
+        meeting_date=meeting_date,
+        title=title,
+        location=data.location,
         status=MeetingStatus.CREATED,
         meeting_mode=data.meeting_mode,
         meeting_type=data.meeting_type,

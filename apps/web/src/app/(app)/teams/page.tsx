@@ -1,13 +1,13 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useSetAtom } from "jotai";
-import { Lock, LockOpen, Users } from "lucide-react";
+import { Lock, LockOpen, Plus, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { selectedTeamIdAtom } from "@/atoms/team";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Weeky } from "@/components/weeky/weeky";
 import {
   Dialog,
   DialogContent,
@@ -17,10 +17,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
+import { Weeky } from "@/components/weeky/weeky";
 import type { TeamResponse } from "@/lib/api/__generated__/schemas";
 import {
+  getListTeamsApiV1TeamsGetQueryKey,
   useAuthenticateTeamApiV1TeamsTeamIdAuthPost,
+  useCreateTeamApiV1TeamsPost,
   useListTeamsApiV1TeamsGet,
 } from "@/lib/api/__generated__/teams/teams";
 
@@ -33,6 +37,7 @@ interface PasswordDialogState {
 export default function TeamsPage() {
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const setSelectedTeamId = useSetAtom(selectedTeamIdAtom);
 
   const [passwordDialog, setPasswordDialog] = useState<PasswordDialogState>({
@@ -43,7 +48,29 @@ export default function TeamsPage() {
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
 
+  // Create team dialog state
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [newTeamName, setNewTeamName] = useState("");
+  const [newTeamPassword, setNewTeamPassword] = useState("");
+
   const { data: teams = [], isLoading, error } = useListTeamsApiV1TeamsGet();
+
+  const createTeam = useCreateTeamApiV1TeamsPost({
+    mutation: {
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: getListTeamsApiV1TeamsGetQueryKey() });
+        setShowCreateDialog(false);
+        setNewTeamName("");
+        setNewTeamPassword("");
+        setSelectedTeamId(data.id);
+        toast.success(`${data.name} 팀이 생성되었습니다`);
+        router.push("/dashboard");
+      },
+      onError: () => {
+        toast.error("팀 생성에 실패했습니다");
+      },
+    },
+  });
 
   const authenticateMutation = useAuthenticateTeamApiV1TeamsTeamIdAuthPost({
     mutation: {
@@ -133,35 +160,45 @@ export default function TeamsPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <Users className="mb-4 h-12 w-12 text-muted-foreground" />
-            <p className="text-muted-foreground">등록된 팀이 없습니다</p>
+            <p className="mb-4 text-muted-foreground">등록된 팀이 없습니다</p>
+            <Button onClick={() => setShowCreateDialog(true)}>
+              <Plus className="h-4 w-4" />첫 번째 팀 만들기
+            </Button>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {teams.map((team) => (
-            <Card
-              key={team.id}
-              className="cursor-pointer transition-all hover:border-primary hover:shadow-md"
-              onClick={() => handleTeamClick(team)}
-              data-testid={`team-card-${team.id}`}
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">{team.name}</CardTitle>
-                  {team.has_password ? (
-                    <Lock className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <LockOpen className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <CardDescription>
-                  생성일: {new Date(team.created_at).toLocaleDateString("ko-KR")}
-                </CardDescription>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="space-y-4">
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={() => setShowCreateDialog(true)}>
+              <Plus className="h-4 w-4" />새 팀 만들기
+            </Button>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {teams.map((team) => (
+              <Card
+                key={team.id}
+                className="cursor-pointer transition-all hover:border-primary hover:shadow-md"
+                onClick={() => handleTeamClick(team)}
+                data-testid={`team-card-${team.id}`}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">{team.name}</CardTitle>
+                    {team.has_password ? (
+                      <Lock className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <LockOpen className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <CardDescription>
+                    생성일: {new Date(team.created_at).toLocaleDateString("ko-KR")}
+                  </CardDescription>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
       )}
 
@@ -204,6 +241,61 @@ export default function TeamsPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Team Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>새 팀 만들기</DialogTitle>
+            <DialogDescription>새로운 팀을 생성합니다.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="team-name">팀 이름</Label>
+              <Input
+                id="team-name"
+                type="text"
+                value={newTeamName}
+                onChange={(e) => setNewTeamName(e.target.value)}
+                placeholder="팀 이름 입력"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="team-password">비밀번호 (선택)</Label>
+              <Input
+                id="team-password"
+                type="password"
+                value={newTeamPassword}
+                onChange={(e) => setNewTeamPassword(e.target.value)}
+                placeholder="비밀번호 입력 (선택)"
+              />
+              <p className="text-xs text-muted-foreground">
+                비밀번호를 설정하면 팀 접근 시 인증이 필요합니다
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+              취소
+            </Button>
+            <Button
+              onClick={() => {
+                if (!newTeamName.trim()) return;
+                createTeam.mutate({
+                  data: {
+                    name: newTeamName.trim(),
+                    password: newTeamPassword || null,
+                  },
+                });
+              }}
+              disabled={!newTeamName.trim() || createTeam.isPending}
+            >
+              {createTeam.isPending ? "생성 중..." : "생성"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -17,9 +17,27 @@ export default function DashboardPage() {
     data: meetings = [],
     isLoading,
     error,
-  } = useListMeetingsApiV1MeetingsGet(
-    selectedTeamId ? { team_id: selectedTeamId } : undefined,
-  );
+  } = useListMeetingsApiV1MeetingsGet(selectedTeamId ? { team_id: selectedTeamId } : undefined, {
+    query: { enabled: !!selectedTeamId },
+  });
+
+  // Team selection is required
+  if (!selectedTeamId) {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-8">
+        <div className="flex flex-col items-center justify-center py-16">
+          <Weeky
+            expression="questioning"
+            size="lg"
+            message="대시보드를 보려면 팀을 먼저 선택해주세요"
+          />
+          <Link href="/teams" className="mt-4">
+            <Button>팀 선택하러 가기</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

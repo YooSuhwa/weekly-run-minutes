@@ -12,9 +12,10 @@ from sqlalchemy.orm import selectinload
 from src.lib.database import async_session_factory
 from src.lib.dependencies import get_db
 from src.lib.logging import get_logger
-from src.models import FilteredContent, Meeting, MeetingStatus, Transcript
+from src.models import FilteredContent, Meeting, MeetingStatus, MeetingType, Transcript
 from src.services.chat_filter import ChatFilterError, ChatFilterService, TranscriptSegment
 from src.services.stt import STTError, STTService
+from src.services.weekly_report_parser import WeeklyReportParser
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -59,11 +60,14 @@ async def process_transcription(meeting_id: UUID, enable_chat_filter: bool = Tru
     """
     async with async_session_factory() as db:
         try:
-            # Get meeting with recording
+            # Get meeting with recording and related data for context
             result = await db.execute(
                 select(Meeting)
                 .where(Meeting.id == meeting_id)
-                .options(selectinload(Meeting.recording))
+                .options(
+                    selectinload(Meeting.recording),
+                    selectinload(Meeting.weekly_report),
+                )
             )
             meeting = result.scalar_one_or_none()
 
@@ -107,7 +111,7 @@ async def process_transcription(meeting_id: UUID, enable_chat_filter: bool = Tru
 
             # Run chat filtering if enabled
             if enable_chat_filter and stored_transcripts:
-                await _run_chat_filter(db, meeting_id, stored_transcripts)
+                await _run_chat_filter(db, meeting, stored_transcripts)
 
             # Update meeting status
             meeting.status = MeetingStatus.TRANSCRIBED
@@ -132,20 +136,79 @@ async def process_transcription(meeting_id: UUID, enable_chat_filter: bool = Tru
             await db.commit()
 
 
+def _build_meeting_context(meeting: Meeting) -> str | None:
+    """Build meeting context string for chat filtering.
+
+    Args:
+        meeting: Meeting object with related data loaded
+
+    Returns:
+        Context string for chat filtering, or None if no context available
+    """
+    context_parts: list[str] = []
+
+    # Add meeting basic info
+    context_parts.append(f"회의 제목: {meeting.title}")
+    context_parts.append(f"회의 날짜: {meeting.meeting_date}")
+
+    meeting_type = (
+        meeting.meeting_type.value
+        if isinstance(meeting.meeting_type, MeetingType)
+        else meeting.meeting_type
+    )
+
+    # For weekly report meetings, include the weekly report summary
+    if meeting_type == MeetingType.WEEKLY_REPORT.value and meeting.weekly_report:
+        parser = WeeklyReportParser()
+        weekly_summary = parser.get_all_members_summary(meeting.weekly_report.parsed_data)
+        if weekly_summary:
+            context_parts.append("\n## 주간업무록 요약 (업무 관련 키워드 참조용)")
+            # Limit to first 2000 chars to avoid token limits
+            context_parts.append(weekly_summary[:2000])
+
+    # For general meetings, include agenda if available
+    if meeting.agenda_items:
+        context_parts.append("\n## 회의 아젠다")
+        for i, item in enumerate(meeting.agenda_items, 1):
+            title = item.get("title", "")
+            description = item.get("description", "")
+            context_parts.append(f"{i}. {title}")
+            if description:
+                context_parts.append(f"   - {description}")
+
+    return "\n".join(context_parts) if context_parts else None
+
+
 async def _run_chat_filter(
     db: AsyncSession,
-    meeting_id: UUID,
+    meeting: Meeting,
     transcripts: list[Transcript],
 ) -> None:
     """Run chat filtering on transcripts and store filtered content.
 
     Args:
         db: Database session
-        meeting_id: Meeting UUID
+        meeting: Meeting object with related data
         transcripts: List of transcript segments to filter
     """
     try:
         chat_filter = ChatFilterService()
+
+        # Build meeting context for better filtering
+        meeting_context = _build_meeting_context(meeting)
+
+        # Get session-level context from meeting
+        context_terms = meeting.context_terms  # List of keywords
+        context_instructions = meeting.context_instructions  # Natural language instructions
+
+        logger.info(
+            "Running chat filter with context",
+            meeting_id=str(meeting.id),
+            has_context=meeting_context is not None,
+            has_context_terms=bool(context_terms),
+            has_context_instructions=bool(context_instructions),
+            meeting_type=meeting.meeting_type,
+        )
 
         # Convert transcripts to filter segments
         filter_segments = [
@@ -160,8 +223,13 @@ async def _run_chat_filter(
             for t in transcripts
         ]
 
-        # Run filtering
-        filter_result = await chat_filter.filter_segments(filter_segments)
+        # Run filtering with meeting context and session-level context
+        filter_result = await chat_filter.filter_segments(
+            filter_segments,
+            meeting_context,
+            context_terms,
+            context_instructions,
+        )
 
         # Store filtered content
         transcript_map = {str(t.id): t for t in transcripts}
@@ -176,7 +244,7 @@ async def _run_chat_filter(
                 continue
 
             filtered_content = FilteredContent(
-                meeting_id=meeting_id,
+                meeting_id=meeting.id,
                 content=transcript.text,
                 filter_reason=filtered_item.filter_reason or "casual_talk",
                 confidence=filtered_item.confidence,
@@ -192,7 +260,7 @@ async def _run_chat_filter(
 
         logger.info(
             "Chat filtering completed",
-            meeting_id=str(meeting_id),
+            meeting_id=str(meeting.id),
             filtered_count=len(filter_result.filtered),
             work_related_count=len(filter_result.work_related),
         )
@@ -201,7 +269,7 @@ async def _run_chat_filter(
         # Log but don't fail the transcription
         logger.warning(
             "Chat filtering failed, continuing without filtering",
-            meeting_id=str(meeting_id),
+            meeting_id=str(meeting.id),
             error=str(e),
         )
 

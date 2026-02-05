@@ -29,6 +29,11 @@ describe("minutes atoms", () => {
       expect(store.get(minutesAtom).lastSavedAt).toBeNull();
     });
 
+    it("should have initial confluenceSynced as false", () => {
+      const store = createStore();
+      expect(store.get(minutesAtom).confluenceSynced).toBe(false);
+    });
+
     it("should store updated state", () => {
       const store = createStore();
       store.set(minutesAtom, {
@@ -46,11 +51,13 @@ describe("minutes atoms", () => {
           },
         ],
         lastSavedAt: "2024-01-15T10:00:00Z",
+        confluenceSynced: true,
       });
       expect(store.get(minutesAtom).content).toBe("# Meeting Minutes");
       expect(store.get(minutesAtom).isEdited).toBe(true);
       expect(store.get(minutesAtom).saveStatus).toBe("saving");
       expect(store.get(minutesAtom).corrections).toHaveLength(1);
+      expect(store.get(minutesAtom).confluenceSynced).toBe(true);
     });
   });
 
@@ -84,11 +91,13 @@ describe("minutes atoms", () => {
           },
         ],
         lastSavedAt: "2024-01-15T10:00:00Z",
+        confluenceSynced: true,
       });
       store.set(minutesContentAtom, "New content");
       expect(store.get(minutesAtom).saveStatus).toBe("saved");
       expect(store.get(minutesAtom).corrections).toHaveLength(1);
       expect(store.get(minutesAtom).lastSavedAt).toBe("2024-01-15T10:00:00Z");
+      expect(store.get(minutesAtom).confluenceSynced).toBe(true);
     });
 
     it("should set isEdited to true even when content is same as before", () => {

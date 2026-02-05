@@ -30,7 +30,7 @@ async def meeting_with_report(client: AsyncClient, meeting_id: str, db_session) 
     report = WeeklyReport(
         meeting_id=UUID(meeting_id),
         confluence_page_id="page-123",
-        confluence_page_url="https://test.atlassian.net/wiki/pages/123",
+        confluence_page_url="https://test.atlassian.net/wiki/spaces/TEST/pages/123",
         raw_html="<table><tr><td>이상윤</td></tr></table>",
         parsed_data={
             "team_members": [
@@ -167,7 +167,7 @@ class TestLoadWeeklyReport:
         """Should load, parse, and store weekly report."""
         mock_page_data = {
             "html_content": "<table><tr><td>이상윤</td></tr></table>",
-            "url": "https://test.atlassian.net/wiki/pages/456",
+            "url": "https://test.atlassian.net/wiki/spaces/TEST/pages/456",
         }
 
         with patch("src.routers.weekly_reports.ConfluenceService") as mock_cls:
@@ -191,7 +191,7 @@ class TestLoadWeeklyReport:
         assert response.status_code == 201
         data = response.json()
         assert data["confluence_page_id"] == "page-456"
-        assert data["confluence_page_url"] == "https://test.atlassian.net/wiki/pages/456"
+        assert data["confluence_page_url"] == "https://test.atlassian.net/wiki/spaces/TEST/pages/456"
         assert data["meeting_id"] == meeting_id
         assert len(data["parsed_data"]["team_members"]) == 1
 

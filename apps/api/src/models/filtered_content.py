@@ -16,11 +16,13 @@ if TYPE_CHECKING:
 class FilterReason(str, Enum):
     """Reason why content was filtered."""
 
-    CASUAL_TALK = "casual_talk"  # 잡담
-    GREETING = "greeting"  # 인사말
-    OFF_TOPIC = "off_topic"  # 주제와 무관
-    PERSONAL = "personal"  # 개인적인 이야기
-    SMALL_TALK = "small_talk"  # 소소한 대화
+    CASUAL_TALK = "casual_talk"  # 잡담 (날씨, 음식, 취미 등)
+    GREETING = "greeting"  # 인사말, 안부
+    OFF_TOPIC = "off_topic"  # 주제와 무관한 이야기
+    PERSONAL = "personal"  # 개인적인 이야기 (건강, 가족, 연애 등)
+    SMALL_TALK = "small_talk"  # 소소한 대화, 농담
+    GOSSIP = "gossip"  # 뒷담화, 험담, 부재자 비판
+    NOISE = "noise"  # 회의 운영 잡음 (마이크 체크, "잠깐만요" 등)
 
 
 class FilteredContent(BaseModel):

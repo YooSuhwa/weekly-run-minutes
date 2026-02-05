@@ -263,9 +263,9 @@ export const useUpdateMeetingMinutesApiV1MinutesMeetingsMeetingIdMinutesPut = <T
       return useMutation(getUpdateMeetingMinutesApiV1MinutesMeetingsMeetingIdMinutesPutMutationOptions(options), queryClient);
     }
     /**
- * Publish meeting minutes to Confluence.
+ * Publish or re-publish meeting minutes to Confluence.
 
-Creates a new Confluence page with the minutes content.
+Creates a new Confluence page or updates existing page.
 Uses team-specific Confluence settings if available.
  * @summary Publish Minutes To Confluence
  */

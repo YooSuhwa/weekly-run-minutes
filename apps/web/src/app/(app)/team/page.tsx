@@ -1,17 +1,17 @@
 "use client";
 
 import {
+  closestCenter,
   DndContext,
   type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
-  closestCenter,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
 import {
-  SortableContext,
   arrayMove,
+  SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
@@ -19,16 +19,15 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useAtom, useAtomValue } from "jotai";
 import { GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
-import { Weeky } from "@/components/weeky/weeky";
 import { useEffect, useState } from "react";
 import { selectedTeamIdAtom, type TeamMember, teamMembersAtom } from "@/atoms/team";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
+import { Weeky } from "@/components/weeky/weeky";
 import {
   useAddTeamMemberApiV1TeamsTeamIdMembersPost,
   useGetTeamApiV1TeamsTeamIdGet,
-  useListTeamsApiV1TeamsGet,
   useRemoveTeamMemberApiV1TeamsTeamIdMembersMemberIdDelete,
   useUpdateTeamMemberApiV1TeamsTeamIdMembersMemberIdPatch,
 } from "@/lib/api/__generated__/teams/teams";
@@ -131,9 +130,8 @@ export default function TeamPage() {
     }),
   );
 
-  // Fetch teams list as fallback
-  const { data: teams } = useListTeamsApiV1TeamsGet();
-  const teamId = selectedTeamId ?? teams?.[0]?.id ?? "";
+  // Team selection is required (no fallback)
+  const teamId = selectedTeamId ?? "";
 
   // Fetch team details with members
   const { data: teamData } = useGetTeamApiV1TeamsTeamIdGet(teamId, {
@@ -322,7 +320,11 @@ export default function TeamPage() {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
         <div className="flex flex-col items-center justify-center py-16">
-          <Weeky expression="questioning" size="lg" message="팀원을 관리하려면 팀을 먼저 선택해주세요" />
+          <Weeky
+            expression="questioning"
+            size="lg"
+            message="팀원을 관리하려면 팀을 먼저 선택해주세요"
+          />
         </div>
       </div>
     );

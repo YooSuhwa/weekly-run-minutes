@@ -1,15 +1,41 @@
 "use client";
 
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useAtom } from "jotai";
-import { Check, Link as LinkIcon, ListTodo, Plus, Trash2, Users } from "lucide-react";
+import {
+  Check,
+  GripVertical,
+  Link as LinkIcon,
+  ListTodo,
+  MessageSquare,
+  Plus,
+  Tag,
+  Users,
+  X,
+} from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { confluenceAtom } from "@/atoms/confluence";
 import { recordingAtom } from "@/atoms/recording";
 import { selectedMembersAtom, type TeamMember, teamMembersAtom } from "@/atoms/team";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Weeky } from "@/components/weeky/weeky";
 import {
   Dialog,
   DialogContent,
@@ -21,13 +47,19 @@ import {
 import { FileUpload } from "@/components/ui/file-upload";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { useToast } from "@/components/ui/toast";
+import { Weeky } from "@/components/weeky/weeky";
 import type { WeeklyReportResponse } from "@/lib/api/__generated__/schemas/weeklyReportResponse";
 
 interface AgendaItem {
   title: string;
   description: string;
-  presenter: string;
-  duration_minutes: number | null;
+}
+
+interface MeetingAttendee {
+  id: string;
+  name: string;
+  isGuest: boolean;
+  order: number;
 }
 
 interface ParsedMemberTask {
@@ -49,6 +81,7 @@ interface ParsedMember {
 interface ParsedWeeklyData {
   team_members: ParsedMember[];
 }
+
 import {
   useGetMeetingApiV1MeetingsMeetingIdGet,
   useUpdateMeetingApiV1MeetingsMeetingIdPut,
@@ -65,9 +98,59 @@ import { cn } from "@/lib/utils";
 const defaultAgendaItem: AgendaItem = {
   title: "",
   description: "",
-  presenter: "",
-  duration_minutes: null,
 };
+
+// Sortable attendee item component
+function SortableAttendeeItem({
+  attendee,
+  onRemove,
+}: {
+  attendee: MeetingAttendee;
+  onRemove: (id: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: attendee.id,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2",
+        isDragging && "opacity-50 shadow-lg",
+      )}
+    >
+      <button
+        type="button"
+        className="cursor-grab touch-none text-muted-foreground hover:text-foreground focus:outline-none active:cursor-grabbing"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+        {attendee.order}
+      </span>
+      <span className="flex-1 text-sm">
+        {attendee.name}
+        {attendee.isGuest && <span className="ml-1 text-xs text-muted-foreground">(게스트)</span>}
+      </span>
+      <button
+        type="button"
+        onClick={() => onRemove(attendee.id)}
+        className="text-muted-foreground hover:text-destructive"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
 
 export default function MeetingSetupPage() {
   const params = useParams();
@@ -78,15 +161,32 @@ export default function MeetingSetupPage() {
   const [recording, setRecording] = useAtom(recordingAtom);
   const [confluence, setConfluence] = useAtom(confluenceAtom);
   const [members, setMembers] = useAtom(teamMembersAtom);
-  const [selectedMembers, setSelectedMembers] = useAtom(selectedMembersAtom);
+  const [, setSelectedMembers] = useAtom(selectedMembersAtom);
   const [confluencePageId, setConfluencePageId] = useState("");
   const [isUploading, setIsUploading] = useState(false);
-  const [weeklyReportPreview, setWeeklyReportPreview] = useState<WeeklyReportResponse | null>(
-    null,
+  const [weeklyReportPreview, setWeeklyReportPreview] = useState<WeeklyReportResponse | null>(null);
+
+  // Meeting attendees (team members + guests, with order)
+  const [attendees, setAttendees] = useState<MeetingAttendee[]>([]);
+  const [guestName, setGuestName] = useState("");
+
+  // DnD sensors for attendee reordering
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
   // Agenda items for general meetings (P2)
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
+
+  // Context terms for session-level terminology
+  const [contextTerms, setContextTerms] = useState<string[]>([]);
+  const [termInput, setTermInput] = useState("");
+
+  // Context instructions for natural language directives
+  const [contextInstructions, setContextInstructions] = useState("");
 
   // Fetch meeting to detect type
   const { data: meetingData } = useGetMeetingApiV1MeetingsMeetingIdGet(meetingId);
@@ -104,9 +204,9 @@ export default function MeetingSetupPage() {
     query: { enabled: !!firstTeamId },
   });
 
-  // Sync team members from query to atoms
+  // Sync team members from query to atoms and attendees
   useEffect(() => {
-    if (teamData?.members) {
+    if (teamData?.members && attendees.length === 0) {
       const mappedMembers: TeamMember[] = teamData.members.map((m) => ({
         id: m.id,
         name: m.name,
@@ -116,8 +216,19 @@ export default function MeetingSetupPage() {
       }));
       setMembers(mappedMembers);
       setSelectedMembers(mappedMembers.map((m) => m.id));
+
+      // Initialize attendees from team members
+      const initialAttendees: MeetingAttendee[] = mappedMembers
+        .sort((a, b) => a.presentationOrder - b.presentationOrder)
+        .map((m, idx) => ({
+          id: m.id,
+          name: m.name,
+          isGuest: false,
+          order: idx + 1,
+        }));
+      setAttendees(initialAttendees);
     }
-  }, [teamData, setMembers, setSelectedMembers]);
+  }, [teamData, setMembers, setSelectedMembers, attendees.length]);
 
   // Weekly report mutation
   const loadWeeklyReport =
@@ -176,11 +287,77 @@ export default function MeetingSetupPage() {
     },
   );
 
-  const toggleMember = (id: string) => {
-    setSelectedMembers((prev) =>
-      prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id],
-    );
-  };
+  // Attendee management handlers
+  const handleAttendeeDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (over && active.id !== over.id) {
+        const oldIndex = attendees.findIndex((a) => a.id === active.id);
+        const newIndex = attendees.findIndex((a) => a.id === over.id);
+        const reordered = arrayMove(attendees, oldIndex, newIndex).map((a, idx) => ({
+          ...a,
+          order: idx + 1,
+        }));
+        setAttendees(reordered);
+        setSelectedMembers(reordered.map((a) => a.id));
+      }
+    },
+    [attendees, setSelectedMembers],
+  );
+
+  const handleToggleAttendee = useCallback(
+    (id: string) => {
+      setAttendees((prev) => {
+        const exists = prev.find((a) => a.id === id);
+        if (exists) {
+          // Remove attendee
+          const filtered = prev.filter((a) => a.id !== id);
+          return filtered.map((a, idx) => ({ ...a, order: idx + 1 }));
+        }
+        // Add team member back
+        const member = members.find((m) => m.id === id);
+        if (member) {
+          return [
+            ...prev,
+            { id: member.id, name: member.name, isGuest: false, order: prev.length + 1 },
+          ];
+        }
+        return prev;
+      });
+    },
+    [members],
+  );
+
+  const handleAddGuest = useCallback(() => {
+    const name = guestName.trim();
+    if (!name) return;
+    const guestId = `guest-${Date.now()}`;
+    setAttendees((prev) => [...prev, { id: guestId, name, isGuest: true, order: prev.length + 1 }]);
+    setGuestName("");
+  }, [guestName]);
+
+  const handleRemoveAttendee = useCallback((id: string) => {
+    setAttendees((prev) => {
+      const filtered = prev.filter((a) => a.id !== id);
+      return filtered.map((a, idx) => ({ ...a, order: idx + 1 }));
+    });
+  }, []);
+
+  // Context terms handlers
+  const handleAddTerm = useCallback(() => {
+    const term = termInput.trim();
+    if (!term || contextTerms.includes(term)) return;
+    if (contextTerms.length >= 50) {
+      toast.error("최대 50개까지 추가할 수 있습니다");
+      return;
+    }
+    setContextTerms((prev) => [...prev, term]);
+    setTermInput("");
+  }, [termInput, contextTerms, toast]);
+
+  const handleRemoveTerm = useCallback((term: string) => {
+    setContextTerms((prev) => prev.filter((t) => t !== term));
+  }, []);
 
   const handleFileSelect = (file: File) => {
     setRecording({ ...recording, file, uploadStatus: "idle", errorMessage: null });
@@ -217,19 +394,26 @@ export default function MeetingSetupPage() {
     setIsUploading(true);
     setRecording({ ...recording, uploadStatus: "uploading", uploadProgress: 0 });
 
-    // Save agenda items for general meetings (P2)
-    if (isGeneralMeeting && agendaItems.length > 0) {
-      const validAgendaItems = agendaItems.filter((item) => item.title.trim());
-      if (validAgendaItems.length > 0) {
-        try {
-          await updateMeeting.mutateAsync({
-            meetingId,
-            data: { agenda_items: validAgendaItems },
-          });
-        } catch (error) {
-          // Continue even if agenda save fails
-          console.error("Failed to save agenda items:", error);
-        }
+    // Save meeting metadata (agenda items, context terms, context instructions)
+    const hasAgendaItems = isGeneralMeeting && agendaItems.some((item) => item.title.trim());
+    const hasContextTerms = contextTerms.length > 0;
+    const hasContextInstructions = contextInstructions.trim().length > 0;
+
+    if (hasAgendaItems || hasContextTerms || hasContextInstructions) {
+      try {
+        await updateMeeting.mutateAsync({
+          meetingId,
+          data: {
+            ...(hasAgendaItems && {
+              agenda_items: agendaItems.filter((item) => item.title.trim()),
+            }),
+            ...(hasContextTerms && { context_terms: contextTerms }),
+            ...(hasContextInstructions && { context_instructions: contextInstructions.trim() }),
+          },
+        });
+      } catch (error) {
+        // Continue even if metadata save fails
+        console.error("Failed to save meeting metadata:", error);
       }
     }
 
@@ -318,7 +502,10 @@ export default function MeetingSetupPage() {
                       </p>
                       <ul className="space-y-1">
                         {getWeeklyReportSummary().map((item, idx) => (
-                          <li key={idx} className="text-xs text-muted-foreground flex items-center gap-2">
+                          <li
+                            key={idx}
+                            className="text-xs text-muted-foreground flex items-center gap-2"
+                          >
                             <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                             {item}
                           </li>
@@ -359,69 +546,41 @@ export default function MeetingSetupPage() {
                   회의 안건을 추가하면 구조화된 회의록을 생성할 수 있습니다.
                 </p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {agendaItems.map((item, index) => (
-                    <div key={index} className="rounded-lg border border-border p-3 space-y-2">
-                      <div className="flex items-start justify-between gap-2">
+                    <div key={index} className="flex items-start gap-2">
+                      <div className="flex-1 space-y-1">
                         <input
                           type="text"
-                          placeholder="안건 제목"
+                          placeholder="안건"
                           value={item.title}
                           onChange={(e) => {
                             const newItems = [...agendaItems];
                             newItems[index] = { ...item, title: e.target.value };
                             setAgendaItems(newItems);
                           }}
-                          className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                          className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                         />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setAgendaItems(agendaItems.filter((_, i) => i !== index));
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
                         <input
                           type="text"
-                          placeholder="발표자 (선택)"
-                          value={item.presenter}
+                          placeholder="설명 (선택)"
+                          value={item.description}
                           onChange={(e) => {
                             const newItems = [...agendaItems];
-                            newItems[index] = { ...item, presenter: e.target.value };
+                            newItems[index] = { ...item, description: e.target.value };
                             setAgendaItems(newItems);
                           }}
-                          className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                        />
-                        <input
-                          type="number"
-                          placeholder="시간 (분)"
-                          value={item.duration_minutes ?? ""}
-                          onChange={(e) => {
-                            const newItems = [...agendaItems];
-                            newItems[index] = {
-                              ...item,
-                              duration_minutes: e.target.value ? Number(e.target.value) : null,
-                            };
-                            setAgendaItems(newItems);
-                          }}
-                          className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                          className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-xs text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                         />
                       </div>
-                      <textarea
-                        placeholder="상세 설명 (선택)"
-                        value={item.description}
-                        onChange={(e) => {
-                          const newItems = [...agendaItems];
-                          newItems[index] = { ...item, description: e.target.value };
-                          setAgendaItems(newItems);
-                        }}
-                        rows={2}
-                        className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
-                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0"
+                        onClick={() => setAgendaItems(agendaItems.filter((_, i) => i !== index))}
+                      >
+                        <X className="h-4 w-4 text-muted-foreground" />
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -446,24 +605,164 @@ export default function MeetingSetupPage() {
               참석자
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {members.map((member) => (
-                <button
-                  key={member.id}
-                  type="button"
-                  onClick={() => toggleMember(member.id)}
-                  className={cn(
-                    "rounded-full border px-3 py-1.5 text-sm transition-colors",
-                    selectedMembers.includes(member.id)
-                      ? "border-primary bg-primary/10 text-primary-foreground"
-                      : "border-border text-muted-foreground hover:border-primary/50",
-                  )}
+          <CardContent className="space-y-4">
+            {/* Current attendees with drag-and-drop reordering */}
+            {attendees.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground mb-2">발표 순서 (드래그하여 변경)</p>
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleAttendeeDragEnd}
                 >
-                  {member.name}
-                </button>
-              ))}
+                  <SortableContext
+                    items={attendees.map((a) => a.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-1">
+                      {attendees.map((attendee) => (
+                        <SortableAttendeeItem
+                          key={attendee.id}
+                          attendee={attendee}
+                          onRemove={handleRemoveAttendee}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              </div>
+            )}
+
+            {/* Team members toggle */}
+            <div>
+              <p className="text-xs text-muted-foreground mb-2">팀원 추가/제거</p>
+              <div className="flex flex-wrap gap-2">
+                {members.map((member) => {
+                  const isAttending = attendees.some((a) => a.id === member.id);
+                  return (
+                    <button
+                      key={member.id}
+                      type="button"
+                      onClick={() => handleToggleAttendee(member.id)}
+                      className={cn(
+                        "rounded-full border px-3 py-1.5 text-sm transition-colors",
+                        isAttending
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border text-muted-foreground hover:border-primary/50",
+                      )}
+                    >
+                      {member.name}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
+
+            {/* Add guest */}
+            <div>
+              <p className="text-xs text-muted-foreground mb-2">게스트 추가</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="게스트 이름"
+                  value={guestName}
+                  onChange={(e) => setGuestName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddGuest()}
+                  className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddGuest}
+                  disabled={!guestName.trim()}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Context Terms */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Tag className="h-4 w-4" />
+              세션 용어 (선택)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              이번 회의에서 자주 사용될 용어나 키워드를 추가하면 STT 정확도와 회의록 품질이
+              향상됩니다.
+            </p>
+
+            {/* Current terms */}
+            {contextTerms.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {contextTerms.map((term) => (
+                  <span
+                    key={term}
+                    className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-sm"
+                  >
+                    {term}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveTerm(term)}
+                      className="ml-0.5 text-muted-foreground hover:text-destructive"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Add term input */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="용어 입력 (예: Phoenix, Sprint 15)"
+                value={termInput}
+                onChange={(e) => setTermInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddTerm()}
+                className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAddTerm}
+                disabled={!termInput.trim()}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Context Instructions */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <MessageSquare className="h-4 w-4" />
+              특별 지시사항 (선택)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              이번 회의록 생성에 특별히 적용할 지시사항을 자연어로 입력하세요.
+            </p>
+            <textarea
+              placeholder="예: 'OOO 이름이 나오는 얘기는 다 빼줘', '기술 용어는 영문으로 표기해줘'"
+              value={contextInstructions}
+              onChange={(e) => setContextInstructions(e.target.value)}
+              rows={3}
+              maxLength={1000}
+              className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            <p className="text-xs text-muted-foreground text-right">
+              {contextInstructions.length}/1000
+            </p>
           </CardContent>
         </Card>
 
@@ -509,7 +808,8 @@ export default function MeetingSetupPage() {
             <DialogTitle>주간업무록 확인</DialogTitle>
             <DialogDescription>Confluence에서 불러온 주간업무록입니다.</DialogDescription>
           </DialogHeader>
-          {(weeklyReportPreview?.parsed_data as unknown as ParsedWeeklyData | undefined)?.team_members && (
+          {(weeklyReportPreview?.parsed_data as unknown as ParsedWeeklyData | undefined)
+            ?.team_members && (
             <div className="space-y-4">
               {(weeklyReportPreview!.parsed_data as unknown as ParsedWeeklyData).team_members.map(
                 (member) => (

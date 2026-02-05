@@ -3,10 +3,10 @@
 import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { Bold, Italic, List, ListOrdered, Redo, Strikethrough, Undo } from "lucide-react";
+import { Bold, Heading1, Heading2, Heading3, Italic, List, ListOrdered, Redo, Strikethrough, Undo } from "lucide-react";
 import { marked } from "marked";
 import TurndownService from "turndown";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { CorrectionItem } from "@/atoms/minutes";
 import { cn } from "@/lib/utils";
 import { CorrectionHighlight } from "./correction-highlight-extension";
@@ -19,6 +19,16 @@ const turndownService = new TurndownService({
   headingStyle: "atx",
   bulletListMarker: "-",
   codeBlockStyle: "fenced",
+});
+
+// Preserve heading levels properly
+turndownService.addRule("headings", {
+  filter: ["h1", "h2", "h3", "h4", "h5", "h6"],
+  replacement: (content, node) => {
+    const level = Number(node.nodeName.charAt(1));
+    const prefix = "#".repeat(level);
+    return `\n\n${prefix} ${content.trim()}\n\n`;
+  },
 });
 
 // Convert markdown to HTML
@@ -46,14 +56,23 @@ export function MinutesEditor({
   activeCorrectionIndex = null,
   readOnly = false,
 }: MinutesEditorProps) {
-  const isInternalUpdate = useRef(false);
-
-  // Convert markdown content to HTML for initial render
-  const initialHtml = useMemo(() => markdownToHtml(content), []);
+  // Track if editor is currently being edited by user
+  const isUserEditing = useRef(false);
+  // Track if we're doing a programmatic update
+  const isProgrammaticUpdate = useRef(false);
+  // Track the initial content load
+  const hasInitialContent = useRef(false);
+  // Store the onChange callback in a ref to avoid re-creating editor
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        heading: {
+          levels: [1, 2, 3],
+        },
+      }),
       Placeholder.configure({
         placeholder: "회의록을 작성하세요...",
       }),
@@ -62,14 +81,28 @@ export function MinutesEditor({
         activeCorrectionIndex,
       }),
     ],
-    content: initialHtml,
+    content: "",
     editable: !readOnly,
     onUpdate: ({ editor }) => {
+      // Skip if this is a programmatic update (not user editing)
+      if (isProgrammaticUpdate.current) {
+        return;
+      }
+      // Mark as user editing
+      isUserEditing.current = true;
       // Convert HTML back to markdown for storage
       const html = editor.getHTML();
       const markdown = htmlToMarkdown(html);
-      isInternalUpdate.current = true;
-      onChange(markdown);
+      onChangeRef.current(markdown);
+    },
+    onFocus: () => {
+      isUserEditing.current = true;
+    },
+    onBlur: () => {
+      // Small delay before allowing external updates again
+      setTimeout(() => {
+        isUserEditing.current = false;
+      }, 100);
     },
     editorProps: {
       attributes: {
@@ -95,25 +128,33 @@ export function MinutesEditor({
     }
   }, [editor, corrections, activeCorrectionIndex]);
 
-  // Update editor content when external content changes
+  // Sync content from prop to editor - only on initial load or when user is not editing
   useEffect(() => {
-    if (!editor || !content) return;
+    if (!editor) return;
+    if (!content) return;
 
-    // Skip if this is an internal update from onUpdate
-    if (isInternalUpdate.current) {
-      isInternalUpdate.current = false;
+    // Always load initial content
+    if (!hasInitialContent.current) {
+      isProgrammaticUpdate.current = true;
+      const html = markdownToHtml(content);
+      editor.commands.setContent(html, false);
+      hasInitialContent.current = true;
+      isProgrammaticUpdate.current = false;
       return;
     }
 
-    // In readOnly mode or when editor is not focused, always update content
-    if (readOnly || !editor.isFocused) {
-      const html = markdownToHtml(content);
-      const currentHtml = editor.getHTML();
-      if (currentHtml !== html) {
-        editor.commands.setContent(html);
-      }
+    // Skip sync while user is actively editing
+    if (isUserEditing.current) {
+      return;
     }
-  }, [content, editor, readOnly]);
+  }, [content, editor]);
+
+  // Reset initial content flag when content is cleared (e.g., loading new meeting)
+  useEffect(() => {
+    if (!content) {
+      hasInitialContent.current = false;
+    }
+  }, [content]);
 
   if (!editor) return null;
 
@@ -121,6 +162,34 @@ export function MinutesEditor({
     <div className="rounded-xl border border-border bg-card">
       {/* Toolbar - 6번: 읽기 전용 모드에서 비활성화 */}
       <div className={`flex items-center gap-1 border-b border-border px-3 py-2 ${readOnly ? "opacity-50 pointer-events-none" : ""}`}>
+        {/* Heading buttons */}
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+          isActive={editor.isActive("heading", { level: 1 })}
+          disabled={readOnly}
+          title="Heading 1"
+        >
+          <Heading1 className="h-4 w-4" />
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+          isActive={editor.isActive("heading", { level: 2 })}
+          disabled={readOnly}
+          title="Heading 2"
+        >
+          <Heading2 className="h-4 w-4" />
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+          isActive={editor.isActive("heading", { level: 3 })}
+          disabled={readOnly}
+          title="Heading 3"
+        >
+          <Heading3 className="h-4 w-4" />
+        </ToolbarButton>
+
+        <div className="mx-2 h-5 w-px bg-border" />
+
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBold().run()}
           isActive={editor.isActive("bold")}

@@ -235,11 +235,11 @@ class TestPublishMinutes:
             mock_service.upload_meeting_minutes = AsyncMock(
                 return_value={
                     "id": "confluence-page-123",
-                    "url": "https://test.atlassian.net/wiki/pages/123",
+                    "url": "https://test.atlassian.net/wiki/spaces/TEST/pages/123",
                     "title": "회의록",
                 }
             )
-            mock_service_cls.return_value = mock_service
+            mock_service_cls.from_team.return_value = mock_service
 
             response = await client.post(
                 f"/api/v1/minutes/meetings/{meeting_with_minutes}/publish"
@@ -247,10 +247,10 @@ class TestPublishMinutes:
             assert response.status_code == 200
             data = response.json()
             assert data["confluence_page_id"] == "confluence-page-123"
-            assert data["confluence_page_url"] == "https://test.atlassian.net/wiki/pages/123"
+            assert data["confluence_page_url"] == "https://test.atlassian.net/wiki/spaces/TEST/pages/123"
 
     @pytest.mark.asyncio
-    async def test_publish_already_published(
+    async def test_republish_updates_existing_page(
         self, client: AsyncClient, meeting_with_minutes: str
     ):
         # First publish
@@ -259,18 +259,32 @@ class TestPublishMinutes:
             mock_service.upload_meeting_minutes = AsyncMock(
                 return_value={
                     "id": "page-1",
-                    "url": "https://test.atlassian.net/wiki/pages/1",
+                    "url": "https://test.atlassian.net/wiki/spaces/TEST/pages/1",
                     "title": "회의록",
                 }
             )
-            mock_service_cls.return_value = mock_service
+            mock_service_cls.from_team.return_value = mock_service
             await client.post(f"/api/v1/minutes/meetings/{meeting_with_minutes}/publish")
 
-        # Second publish should fail
-        response = await client.post(
-            f"/api/v1/minutes/meetings/{meeting_with_minutes}/publish"
-        )
-        assert response.status_code == 409
+        # Second publish should update existing page
+        with patch("src.routers.minutes.ConfluenceService") as mock_service_cls:
+            mock_service = AsyncMock()
+            mock_service.get_page_by_id = AsyncMock(
+                return_value={"version": {"number": 1}}
+            )
+            mock_service.update_page = AsyncMock(
+                return_value={"id": "page-1", "title": "회의록 (updated)"}
+            )
+            mock_service._markdown_to_confluence_html = lambda content: f"<p>{content}</p>"
+            mock_service_cls.from_team.return_value = mock_service
+
+            response = await client.post(
+                f"/api/v1/minutes/meetings/{meeting_with_minutes}/publish"
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["confluence_page_id"] == "page-1"
+            mock_service.update_page.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_publish_confluence_error(
@@ -283,7 +297,7 @@ class TestPublishMinutes:
             mock_service.upload_meeting_minutes = AsyncMock(
                 side_effect=ConfluenceError("Upload failed", 500)
             )
-            mock_service_cls.return_value = mock_service
+            mock_service_cls.from_team.return_value = mock_service
 
             response = await client.post(
                 f"/api/v1/minutes/meetings/{meeting_with_minutes}/publish"
@@ -1072,3 +1086,161 @@ class TestGeneralMeetingMinutesGeneration:
             # Verify MinutesGeneratorService was called, not GeneralMeetingService
             mock_weekly.generate_minutes.assert_called_once()
             mock_general.generate_minutes.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_general_meeting_title_updated_from_ai_suggestion(
+        self, client: AsyncClient, db_session
+    ):
+        """P2: Should update meeting title from AI suggested_title for general meetings."""
+        from datetime import date
+
+        # Create team with members
+        team_response = await client.post("/api/v1/teams", json={"name": "제목테스트팀"})
+        team_id = team_response.json()["id"]
+
+        await client.post(
+            f"/api/v1/teams/{team_id}/members",
+            json={"name": "테스터", "presentation_order": 1},
+        )
+
+        # Create general meeting with auto-generated title
+        meeting_response = await client.post(
+            "/api/v1/meetings",
+            json={
+                "team_id": team_id,
+                "meeting_date": "2025-01-15",
+                "meeting_type": "general",
+                # title not provided - should be auto-generated as "일반회의 (25/1/15)"
+            },
+        )
+        meeting_id = UUID(meeting_response.json()["id"])
+
+        # Verify initial title is auto-generated
+        assert meeting_response.json()["title"] == "일반회의 (25/1/15)"
+
+        await client.patch(
+            f"/api/v1/meetings/{str(meeting_id)}/status",
+            json={"status": "transcribed"},
+        )
+
+        # Add transcript
+        transcript = Transcript(
+            meeting_id=meeting_id,
+            start_time=0.0,
+            end_time=5.0,
+            text="프로젝트 킥오프 회의입니다.",
+            speaker_label="speaker_0",
+            confidence=0.9,
+        )
+        db_session.add(transcript)
+        await db_session.commit()
+
+        # Mock with suggested_title
+        mock_result = GeneralMinutesResult(
+            content_markdown="# 프로젝트 킥오프 회의록",
+            ai_model="gpt-4o",
+            prompt_version="1.0.0",
+            suggested_title="프로젝트 킥오프",
+            corrections=[],
+            action_items=[],
+            decisions=[],
+            topics_summary=[],
+        )
+
+        @asynccontextmanager
+        async def mock_session_factory():
+            yield db_session
+
+        with (
+            patch("src.routers.minutes.async_session_factory", mock_session_factory),
+            patch("src.routers.minutes.GeneralMeetingService") as mock_gen_cls,
+        ):
+            mock_gen = AsyncMock()
+            mock_gen.generate_minutes = AsyncMock(return_value=mock_result)
+            mock_gen_cls.return_value = mock_gen
+
+            await generate_minutes_task(meeting_id)
+
+        # Verify title was updated
+        result = await db_session.execute(
+            select(Meeting).where(Meeting.id == meeting_id)
+        )
+        meeting = result.scalar_one()
+        assert meeting.title == "프로젝트 킥오프 (25/1/15)"
+        assert meeting.status == MeetingStatus.DRAFT_READY
+
+    @pytest.mark.asyncio
+    async def test_general_meeting_title_not_updated_if_custom(
+        self, client: AsyncClient, db_session
+    ):
+        """P2: Should NOT update meeting title if user provided a custom title."""
+        # Create team with members
+        team_response = await client.post("/api/v1/teams", json={"name": "커스텀제목팀"})
+        team_id = team_response.json()["id"]
+
+        await client.post(
+            f"/api/v1/teams/{team_id}/members",
+            json={"name": "테스터", "presentation_order": 1},
+        )
+
+        # Create general meeting with custom title
+        meeting_response = await client.post(
+            "/api/v1/meetings",
+            json={
+                "team_id": team_id,
+                "meeting_date": "2025-01-15",
+                "title": "내가 정한 제목",  # Custom title
+                "meeting_type": "general",
+            },
+        )
+        meeting_id = UUID(meeting_response.json()["id"])
+
+        await client.patch(
+            f"/api/v1/meetings/{str(meeting_id)}/status",
+            json={"status": "transcribed"},
+        )
+
+        # Add transcript
+        transcript = Transcript(
+            meeting_id=meeting_id,
+            start_time=0.0,
+            end_time=5.0,
+            text="회의 내용입니다.",
+            speaker_label="speaker_0",
+            confidence=0.9,
+        )
+        db_session.add(transcript)
+        await db_session.commit()
+
+        # Mock with suggested_title
+        mock_result = GeneralMinutesResult(
+            content_markdown="# 회의록",
+            ai_model="gpt-4o",
+            prompt_version="1.0.0",
+            suggested_title="AI 제안 제목",
+            corrections=[],
+            action_items=[],
+            decisions=[],
+            topics_summary=[],
+        )
+
+        @asynccontextmanager
+        async def mock_session_factory():
+            yield db_session
+
+        with (
+            patch("src.routers.minutes.async_session_factory", mock_session_factory),
+            patch("src.routers.minutes.GeneralMeetingService") as mock_gen_cls,
+        ):
+            mock_gen = AsyncMock()
+            mock_gen.generate_minutes = AsyncMock(return_value=mock_result)
+            mock_gen_cls.return_value = mock_gen
+
+            await generate_minutes_task(meeting_id)
+
+        # Verify title was NOT updated (custom title preserved)
+        result = await db_session.execute(
+            select(Meeting).where(Meeting.id == meeting_id)
+        )
+        meeting = result.scalar_one()
+        assert meeting.title == "내가 정한 제목"  # Should NOT change
