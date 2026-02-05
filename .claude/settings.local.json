@@ -10,7 +10,29 @@
       "Bash(dir:*)",
       "Bash(npx next build)",
       "Bash(npx biome check:*)",
-      "Bash(PYTHONPATH=. uv run:*)"
+      "Bash(PYTHONPATH=. uv run:*)",
+      "Bash(mise //apps/api:test:*)",
+      "Bash(mise //apps/api:gen:openapi:*)",
+      "Bash(mise //apps/web:gen:api:*)",
+      "Bash(mise //apps/web:typecheck:*)",
+      "Bash(pnpm build:*)",
+      "Bash(mise:*)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(uv run poe:*)",
+      "Bash(pnpm gen:api:*)",
+      "Skill(shadcn-ui)",
+      "Bash(uv run alembic:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: add location field, fix Confluence indentation, enable title editing\n\n- Add meeting location field throughout the stack \\(model, schema, API, frontend\\)\n- Fix Confluence nested list indentation by normalizing 2-space to 4-space\n- Add editable meeting title on minutes page with inline editing UI\n- Add DatePicker component with Korean locale for meeting creation\n- Include location in minutes generation prompts \\(weekly and general\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push)",
+      "Bash(gh pr create --title \"feat\\(P2\\): multi-team extensions and UX improvements\" --body \"$\\(cat <<''EOF''\n## Summary\n\n- Add multi-team support with team selection and vocabulary management\n- Implement general meeting type with AI-generated titles\n- Add meeting location field throughout the stack\n- Fix Confluence nested list indentation rendering\n- Enable inline title editing on minutes page\n- Apply UI/UX improvements with better date picker and form layouts\n- Add meeting edit/delete functionality to dashboard\n- Support new Confluence task-list expand format in weekly report parser\n\n## Changes\n\n### Backend \\(API\\)\n- Add `location` field to meetings model and schema\n- Fix Confluence markdown indentation \\(2-space → 4-space normalization\\)\n- Support AI-suggested titles for general meetings\n- Add vocabulary pipeline for team-specific terminology\n- Parse new Confluence task-list expand format\n\n### Frontend \\(Web\\)\n- Add DatePicker component with Korean locale\n- Add location input to meeting creation form\n- Enable inline meeting title editing on minutes page\n- Add meeting edit/delete actions on dashboard\n- Improve UI/UX with shadcn/ui components\n- Replace Weeky emoji with PNG assets\n\n### Infrastructure\n- Add Alembic migration for location column\n- Update OpenAPI schema and generated types\n\n## Test plan\n\n- [ ] Create a new meeting with custom date, title, and location\n- [ ] Verify location appears in generated minutes\n- [ ] Edit meeting title from minutes page\n- [ ] Publish to Confluence and verify nested lists render correctly\n- [ ] Create general meeting and verify AI generates meaningful title\n- [ ] Edit/delete meetings from dashboard\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\nEOF\n\\)\")",
+      "Bash(gh auth:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(git stash:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat\\(P2\\): add team settings, context terms, prompts, and UI improvements\n\nBackend:\n- Add TeamSettings model \\(split from Team for separation of concerns\\)\n- Add migrations: team_settings table, context_terms/instructions, confluence_synced\n- Extract AI prompts to separate .md files \\(minutes, general meeting, chat filter\\)\n- Improve chat filter service with better transcript analysis\n- Update routers for team settings and transcription enhancements\n\nFrontend:\n- Enhance meeting setup page with context terms input\n- Improve teams management page with settings\n- Update settings page layout\n- Add confluence sync status to minutes atom\n- Update minutes editor with improved toolbar\n\nTests:\n- Add tests for confluence service improvements\n- Update meeting, minutes, and transcription router tests\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nchore: add UI/UX Claude skills for frontend development\n\n- shadcn-ui: Component patterns and reference docs\n- tailwind-design-system: Design system with Tailwind CSS\n- ui-ux-pro-max: Comprehensive UI/UX design intelligence\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit:*)"
     ]
   }
 }
