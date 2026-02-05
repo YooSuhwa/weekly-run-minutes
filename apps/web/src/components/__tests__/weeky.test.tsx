@@ -167,4 +167,45 @@ describe("Weeky", () => {
       expect(wrapper.getAttribute("class")).toContain("mt-4");
     });
   });
+
+  describe("variants", () => {
+    it("renders default variant with vertical layout", () => {
+      const { container } = render(<Weeky expression="greeting" />);
+      const wrapper = container.firstChild as HTMLElement;
+      expect(wrapper.getAttribute("class")).toContain("flex-col");
+    });
+
+    it("renders bubble variant with speech bubble", () => {
+      render(<Weeky expression="greeting" variant="bubble" message="안녕하세요!" />);
+      expect(screen.getByText("안녕하세요!")).toBeDefined();
+      const img = screen.getByAltText("Weeky greeting");
+      expect(img).toBeDefined();
+    });
+
+    it("renders bubble variant with left position", () => {
+      const { container } = render(
+        <Weeky expression="greeting" variant="bubble" bubblePosition="left" />
+      );
+      const wrapper = container.firstChild as HTMLElement;
+      expect(wrapper.getAttribute("class")).toContain("flex-row-reverse");
+    });
+
+    it("renders bubble variant with right position by default", () => {
+      const { container } = render(<Weeky expression="greeting" variant="bubble" />);
+      const wrapper = container.firstChild as HTMLElement;
+      expect(wrapper.getAttribute("class")).not.toContain("flex-row-reverse");
+    });
+
+    it("renders card variant with gradient background", () => {
+      const { container } = render(<Weeky expression="greeting" variant="card" />);
+      const wrapper = container.firstChild as HTMLElement;
+      expect(wrapper.getAttribute("class")).toContain("bg-gradient-to-br");
+      expect(wrapper.getAttribute("class")).toContain("rounded-2xl");
+    });
+
+    it("renders card variant with message", () => {
+      render(<Weeky expression="done" variant="card" message="회의록이 준비되었어요!" />);
+      expect(screen.getByText("회의록이 준비되었어요!")).toBeDefined();
+    });
+  });
 });

@@ -43,6 +43,9 @@ Thumbs.db
 # Git Worktree
 worktree/
 
+# Uploaded files
+apps/api/data/uploads/
+
 # Misc
 *.log
 *.tmp

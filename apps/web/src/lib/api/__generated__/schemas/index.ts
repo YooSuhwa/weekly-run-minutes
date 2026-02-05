@@ -46,6 +46,7 @@ export * from './meetingStartResponseQuestionTree';
 export * from './meetingStatus';
 export * from './meetingStatusUpdate';
 export * from './meetingType';
+export * from './meetingUpdate';
 export * from './meetingWithDetails';
 export * from './minutesGenerationStatusResponse';
 export * from './minutesResponse';

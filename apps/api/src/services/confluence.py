@@ -1,10 +1,15 @@
 """Confluence API v2 integration service."""
 
+from typing import TYPE_CHECKING
+
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.lib.config import settings
 from src.lib.logging import get_logger
+
+if TYPE_CHECKING:
+    from src.models import Team
 
 logger = get_logger(__name__)
 
@@ -20,11 +25,52 @@ class ConfluenceError(Exception):
 class ConfluenceService:
     """Confluence API v2 service for fetching and uploading pages."""
 
-    def __init__(self) -> None:
-        self.base_url = settings.CONFLUENCE_BASE_URL.rstrip("/")
+    def __init__(
+        self,
+        base_url: str | None = None,
+        username: str | None = None,
+        token: str | None = None,
+        space_id: str | None = None,
+    ) -> None:
+        """Initialize Confluence service with optional team-specific credentials.
+
+        Args:
+            base_url: Team-specific Confluence base URL (falls back to global settings)
+            username: Team-specific Confluence username (falls back to global settings)
+            token: Team-specific Confluence token (falls back to global settings)
+            space_id: Team-specific space ID/key (falls back to global settings)
+        """
+        self.base_url = (base_url or settings.CONFLUENCE_BASE_URL).rstrip("/")
         self.api_url = f"{self.base_url}/api/v2"
-        self.auth = (settings.CONFLUENCE_USERNAME, settings.CONFLUENCE_TOKEN)
-        self.space_id = settings.CONFLUENCE_SPACE_ID
+        self.auth = (
+            username or settings.CONFLUENCE_USERNAME,
+            token or settings.CONFLUENCE_TOKEN,
+        )
+        self.space_id = space_id or settings.CONFLUENCE_SPACE_ID
+
+    @classmethod
+    def from_team(cls, team: "Team | None") -> "ConfluenceService":
+        """Create a ConfluenceService from team-specific settings.
+
+        Reads settings from team.settings and falls back to global settings
+        for any missing team settings.
+
+        Args:
+            team: Team object with settings relationship loaded, or None
+
+        Returns:
+            ConfluenceService configured with team or global settings
+        """
+        if team is None or team.settings is None:
+            return cls()
+
+        settings_obj = team.settings
+        return cls(
+            base_url=settings_obj.confluence_base_url,
+            username=settings_obj.confluence_username,
+            token=settings_obj.confluence_token,
+            space_id=settings_obj.confluence_space_key,
+        )
 
     def _get_headers(self) -> dict[str, str]:
         """Get common request headers."""
@@ -123,7 +169,7 @@ class ConfluenceService:
         return {
             "id": page["id"],
             "title": page.get("title", ""),
-            "url": f"{self.base_url}/pages/{page['id']}",
+            "url": f"{self.base_url}/spaces/{self.space_id}/pages/{page['id']}",
             "html_content": page.get("body", {}).get("storage", {}).get("value", ""),
             "version": page.get("version", {}).get("number", 1),
         }
@@ -156,7 +202,7 @@ class ConfluenceService:
             {
                 "id": page["id"],
                 "title": page.get("title", ""),
-                "url": f"{self.base_url}/pages/{page['id']}",
+                "url": f"{self.base_url}/spaces/{self.space_id}/pages/{page['id']}",
             }
             for page in pages
         ]
@@ -197,12 +243,23 @@ class ConfluenceService:
             },
         }
 
-        logger.info("Creating Confluence page", title=title, parent_id=parent_id)
+        logger.info(
+            "Creating Confluence page",
+            title=title,
+            parent_id=payload["parentId"],
+            space_id=payload["spaceId"],
+        )
 
         async with httpx.AsyncClient(auth=self.auth, timeout=30.0) as client:
             response = await client.post(url, headers=self._get_headers(), json=payload)
 
             if response.status_code not in (200, 201):
+                logger.error(
+                    "Confluence API error",
+                    status_code=response.status_code,
+                    response_body=response.text,
+                    request_url=url,
+                )
                 raise ConfluenceError(
                     f"Failed to create page: {response.text}",
                     response.status_code,
@@ -295,76 +352,57 @@ class ConfluenceService:
 
         return {
             "id": page["id"],
-            "url": f"{self.base_url}/pages/{page['id']}",
+            "url": f"{self.base_url}/spaces/{self.space_id}/pages/{page['id']}",
             "title": page["title"],
         }
 
     def _markdown_to_confluence_html(self, markdown_content: str) -> str:
         """Convert markdown to Confluence storage format HTML.
 
-        Basic conversion for meeting minutes structure.
+        Uses the markdown library for proper conversion.
+        Handles nested list indentation (2-space to 4-space conversion).
         """
         import re
 
-        lines = markdown_content.split("\n")
-        html_parts: list[str] = []
-        in_list = False
-        list_type = ""
+        import markdown
+
+        # Pre-process: Convert 2-space list indentation to 4-space for nested lists
+        # The markdown library requires 4-space indentation for nested lists
+        processed_content = self._normalize_list_indentation(markdown_content)
+
+        # Convert markdown to HTML with common extensions
+        html = markdown.markdown(
+            processed_content,
+            extensions=[
+                "tables",
+                "fenced_code",
+                "nl2br",  # Convert newlines to <br>
+            ],
+        )
+
+        return html
+
+    def _normalize_list_indentation(self, content: str) -> str:
+        """Normalize list indentation from 2-space to 4-space.
+
+        The markdown library requires 4-space indentation for nested lists,
+        but many editors use 2-space indentation.
+        """
+        import re
+
+        lines = content.split("\n")
+        result = []
 
         for line in lines:
-            stripped = line.strip()
+            # Match leading spaces followed by list marker (-, *, or number.)
+            match = re.match(r"^( +)([-*]|\d+\.)\s", line)
+            if match:
+                spaces = match.group(1)
+                # Convert 2-space indentation levels to 4-space
+                # e.g., 2 spaces -> 4 spaces, 4 spaces -> 8 spaces
+                indent_level = len(spaces) // 2
+                new_spaces = "    " * indent_level
+                line = new_spaces + line[len(spaces) :]
+            result.append(line)
 
-            # Headers
-            if stripped.startswith("# "):
-                if in_list:
-                    html_parts.append(f"</{list_type}>")
-                    in_list = False
-                html_parts.append(f"<h1>{stripped[2:]}</h1>")
-            elif stripped.startswith("## "):
-                if in_list:
-                    html_parts.append(f"</{list_type}>")
-                    in_list = False
-                html_parts.append(f"<h2>{stripped[3:]}</h2>")
-            elif stripped.startswith("### "):
-                if in_list:
-                    html_parts.append(f"</{list_type}>")
-                    in_list = False
-                html_parts.append(f"<h3>{stripped[4:]}</h3>")
-            # Unordered list
-            elif stripped.startswith("- ") or stripped.startswith("* "):
-                if not in_list or list_type != "ul":
-                    if in_list:
-                        html_parts.append(f"</{list_type}>")
-                    html_parts.append("<ul>")
-                    in_list = True
-                    list_type = "ul"
-                html_parts.append(f"<li>{stripped[2:]}</li>")
-            # Ordered list
-            elif re.match(r"^\d+\.\s", stripped):
-                if not in_list or list_type != "ol":
-                    if in_list:
-                        html_parts.append(f"</{list_type}>")
-                    html_parts.append("<ol>")
-                    in_list = True
-                    list_type = "ol"
-                content = re.sub(r"^\d+\.\s", "", stripped)
-                html_parts.append(f"<li>{content}</li>")
-            # Empty line
-            elif not stripped:
-                if in_list:
-                    html_parts.append(f"</{list_type}>")
-                    in_list = False
-            # Regular paragraph
-            else:
-                if in_list:
-                    html_parts.append(f"</{list_type}>")
-                    in_list = False
-                # Handle bold and italic
-                text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", stripped)
-                text = re.sub(r"\*(.+?)\*", r"<em>\1</em>", text)
-                html_parts.append(f"<p>{text}</p>")
-
-        if in_list:
-            html_parts.append(f"</{list_type}>")
-
-        return "\n".join(html_parts)
+        return "\n".join(result)

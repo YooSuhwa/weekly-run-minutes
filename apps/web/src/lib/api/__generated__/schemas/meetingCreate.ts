@@ -14,13 +14,12 @@ import type { MeetingType } from './meetingType';
  */
 export interface MeetingCreate {
   team_id: string;
-  meeting_date: string;
-  /**
-   * @minLength 1
-   * @maxLength 200
-   */
-  title: string;
+  meeting_date?: string | null;
+  title?: string | null;
+  location?: string | null;
   meeting_mode?: MeetingMode;
   meeting_type?: MeetingType;
   agenda_items?: AgendaItem[] | null;
+  context_terms?: string[] | null;
+  context_instructions?: string | null;
 }

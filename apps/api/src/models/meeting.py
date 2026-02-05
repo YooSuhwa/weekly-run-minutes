@@ -60,6 +60,7 @@ class Meeting(BaseModel):
     )
     meeting_date: Mapped[date] = mapped_column(Date, nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
+    location: Mapped[str | None] = mapped_column(String(200), nullable=True)
     status: Mapped[MeetingStatus] = mapped_column(
         String(50),
         default=MeetingStatus.CREATED,
@@ -81,6 +82,14 @@ class Meeting(BaseModel):
     # P2: Agenda items for general meetings (optional)
     # Structure: [{"title": "...", "description": "...", "presenter": "...", "duration_minutes": 10}]
     agenda_items: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+    # Session-level context terms for STT and minutes generation
+    # Simple list of keywords: ["Phoenix", "Sprint 15", "JIRA-1234"]
+    context_terms: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+    # Session-level natural language instructions for AI processing
+    # Example: "OOO 이름이 나오는 얘기는 다 빼줘"
+    context_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Realtime orchestration state (P1-full)
     current_speaker_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -149,6 +158,9 @@ class MeetingMinutes(BaseModel):
     # Edit tracking
     is_edited: Mapped[bool] = mapped_column(default=False, nullable=False)
     edited_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Confluence sync tracking
+    confluence_synced: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     # Relationships
     meeting: Mapped["Meeting"] = relationship("Meeting", back_populates="minutes")

@@ -1,8 +1,12 @@
-"""Weekly report HTML parser for extracting structured task data."""
+"""Weekly report HTML parser for extracting structured task data.
+
+Supports Confluence storage format with ac:structured-macro (expand) and nested ul/li,
+as well as traditional HTML table format.
+"""
 
 import re
 from dataclasses import dataclass, field
-from html.parser import HTMLParser
+from xml.etree import ElementTree as ET
 
 from src.lib.logging import get_logger
 
@@ -41,174 +45,448 @@ class ParsedWeeklyReport:
     team_members: list[MemberTasks] = field(default_factory=list)
 
 
-class WeeklyReportHTMLParser(HTMLParser):
-    """HTML parser for weekly report tables from Confluence."""
+# Status tag patterns
+STATUS_PATTERNS = {
+    "완료": re.compile(r"\[완료\]|\[done\]", re.IGNORECASE),
+    "진행": re.compile(r"\[진행\]|\[ing\]|\[wip\]", re.IGNORECASE),
+    "예정": re.compile(r"\[예정\]|\[todo\]|\[plan\]", re.IGNORECASE),
+}
 
-    def __init__(self) -> None:
-        super().__init__()
-        self.result = ParsedWeeklyReport()
 
-        # Current parsing state
-        self._in_table = False
-        self._in_row = False
-        self._in_cell = False
-        self._current_row: list[str] = []
-        self._current_cell_content: list[str] = []
-        self._rows: list[list[str]] = []
+def _extract_text(element: ET.Element) -> str:
+    """Recursively extract all text from an XML element."""
+    parts: list[str] = []
+    if element.text:
+        parts.append(element.text)
+    for child in element:
+        parts.append(_extract_text(child))
+        if child.tail:
+            parts.append(child.tail)
+    return "".join(parts).strip()
 
-    def handle_starttag(self, tag: str, _attrs: list[tuple[str, str | None]]) -> None:
-        if tag == "table":
-            self._in_table = True
-            self._rows = []
-        elif tag == "tr" and self._in_table:
-            self._in_row = True
-            self._current_row = []
-        elif tag in ("td", "th") and self._in_row:
-            self._in_cell = True
-            self._current_cell_content = []
-        elif tag == "br" and self._in_cell:
-            self._current_cell_content.append("\n")
 
-    def handle_endtag(self, tag: str) -> None:
-        if tag == "table":
-            self._in_table = False
-        elif tag == "tr" and self._in_row:
-            self._in_row = False
-            if self._current_row:
-                self._rows.append(self._current_row)
-        elif tag in ("td", "th") and self._in_cell:
-            self._in_cell = False
-            cell_text = "".join(self._current_cell_content).strip()
-            self._current_row.append(cell_text)
+def _parse_status(text: str) -> tuple[str, str]:
+    """Extract status and clean title from text.
 
-    def handle_data(self, data: str) -> None:
-        if self._in_cell:
-            self._current_cell_content.append(data)
+    Returns:
+        Tuple of (status, cleaned_title)
+    """
+    for status_name, pattern in STATUS_PATTERNS.items():
+        if pattern.search(text):
+            title = pattern.sub("", text).strip()
+            # Remove trailing status info like "(1/27, 완료)" or "(~2/6, 진행)"
+            title = re.sub(r"\s*\(.*?\)\s*$", "", title).strip()
+            return status_name, title
 
-    def get_rows(self) -> list[list[str]]:
-        """Get all parsed rows."""
-        return self._rows
+    # No explicit status tag - try to infer from trailing text
+    if re.search(r"완료\)?\s*$", text):
+        return "완료", re.sub(r"\s*\(.*?\)\s*$", "", text).strip()
+    if re.search(r"진행\)?\s*$", text):
+        return "진행", re.sub(r"\s*\(.*?\)\s*$", "", text).strip()
+    if re.search(r"예정\)?\s*$", text):
+        return "예정", re.sub(r"\s*\(.*?\)\s*$", "", text).strip()
+
+    return "진행", text.strip()
 
 
 class WeeklyReportParser:
-    """Parser for weekly report HTML from Confluence."""
+    """Parser for weekly report HTML from Confluence.
 
-    # Status tag patterns
-    STATUS_PATTERNS = {
-        "완료": re.compile(r"\[완료\]|\[done\]", re.IGNORECASE),
-        "진행": re.compile(r"\[진행\]|\[ing\]|\[wip\]", re.IGNORECASE),
-        "예정": re.compile(r"\[예정\]|\[todo\]|\[plan\]", re.IGNORECASE),
-    }
+    Supports two formats:
+    1. Confluence expand macros (ac:structured-macro) with nested ul/li
+    2. Traditional HTML tables
+    """
 
     def parse(self, html_content: str) -> dict:
         """Parse HTML content and return structured data.
 
         Args:
-            html_content: Raw HTML from Confluence page
+            html_content: Raw HTML from Confluence page (storage format)
 
         Returns:
             Dict with parsed team_members structure
         """
-        parser = WeeklyReportHTMLParser()
-        parser.feed(html_content)
-        rows = parser.get_rows()
-
-        if not rows:
-            logger.warning("No table rows found in weekly report")
+        if not html_content or not html_content.strip():
+            logger.warning("Empty HTML content")
             return {"team_members": []}
 
-        # Parse the table structure
-        # Expected format: Name | Category | Status+Task | Details
-        result = self._parse_table_rows(rows)
+        logger.info(
+            "WeeklyReportParser.parse called",
+            html_length=len(html_content),
+            has_expand="ac:structured-macro" in html_content,
+            parser_version="v2-expand-macro",
+        )
 
-        return {"team_members": [self._member_to_dict(m) for m in result.team_members]}
+        # Try Confluence expand macro format first
+        if "ac:structured-macro" in html_content and 'ac:name="expand"' in html_content:
+            result = self._parse_expand_macros(html_content)
+            if result.team_members:
+                logger.info(
+                    "Parsed weekly report (expand macro format)",
+                    members=len(result.team_members),
+                )
+                return {"team_members": [self._member_to_dict(m) for m in result.team_members]}
 
-    def _parse_table_rows(self, rows: list[list[str]]) -> ParsedWeeklyReport:
-        """Parse table rows into structured data.
+        # Fallback to regex-based parsing for non-XML-safe content
+        result = self._parse_with_regex(html_content)
+        if result.team_members:
+            logger.info(
+                "Parsed weekly report (regex format)",
+                members=len(result.team_members),
+            )
+            return {"team_members": [self._member_to_dict(m) for m in result.team_members]}
 
-        Weekly report table structure:
-        - Row 0: Header row (이름, 대분류, 업무, 상세)
-        - Subsequent rows: Data with merged cells for name and category
+        logger.warning("Could not parse weekly report content")
+        return {"team_members": []}
+
+    def _parse_expand_macros(self, html_content: str) -> ParsedWeeklyReport:
+        """Parse Confluence expand macro format.
+
+        Supports two formats:
+
+        Format 1 (Legacy - member name in expand title):
+        <ac:structured-macro ac:name="expand">
+          <ac:parameter ac:name="title">팀원명</ac:parameter>
+          <ac:rich-text-body>...</ac:rich-text-body>
+        </ac:structured-macro>
+
+        Format 2 (New - member name in task-list, expand title is "자세히 보기"):
+        <ac:task-list>
+          <ac:task>
+            <ac:task-body><strong>팀원명</strong></ac:task-body>
+          </ac:task>
+        </ac:task-list>
+        <ac:structured-macro ac:name="expand">
+          <ac:parameter ac:name="title">자세히 보기</ac:parameter>
+          <ac:rich-text-body>...</ac:rich-text-body>
+        </ac:structured-macro>
         """
         result = ParsedWeeklyReport()
 
-        current_member: MemberTasks | None = None
-        current_category: TaskCategory | None = None
+        # Try new format first (task-list + expand with "자세히 보기")
+        new_format_members = self._parse_task_list_expand_format(html_content)
+        if new_format_members:
+            logger.info(
+                "Detected new format (task-list + expand)",
+                members=len(new_format_members),
+            )
+            result.team_members = new_format_members
+            return result
 
-        # Skip header row
-        data_rows = rows[1:] if rows else []
+        # Fall back to legacy format (member name in expand title)
+        expand_pattern = re.compile(
+            r'<ac:structured-macro[^>]*ac:name="expand"[^>]*>'
+            r'.*?<ac:parameter ac:name="title">(.*?)</ac:parameter>'
+            r".*?<ac:rich-text-body>(.*?)</ac:rich-text-body>"
+            r".*?</ac:structured-macro>",
+            re.DOTALL,
+        )
 
-        for row in data_rows:
-            if not row:
+        # Find all expand macros
+        seen_members: set[str] = set()
+        for match in expand_pattern.finditer(html_content):
+            member_name = match.group(1).strip()
+            body_html = match.group(2).strip()
+
+            # Skip guide/instruction sections and duplicate names
+            if not body_html or len(member_name) > 10:
                 continue
 
-            # Normalize row length (handle merged cells)
-            while len(row) < 4:
-                row.insert(0, "")
+            # Skip if we already processed this member (take the last/most complete one)
+            if member_name in seen_members:
+                # Remove previous entry
+                result.team_members = [m for m in result.team_members if m.name != member_name]
 
-            name, category, task_text, details = (
-                row[0],
-                row[1],
-                row[2],
-                row[3] if len(row) > 3 else "",
-            )
-
-            # New member
-            if name.strip():
-                if current_member:
-                    if current_category:
-                        current_member.categories.append(current_category)
-                    result.team_members.append(current_member)
-                current_member = MemberTasks(name=name.strip())
-                current_category = None
-
-            # New category
-            if category.strip():
-                if current_category and current_member:
-                    current_member.categories.append(current_category)
-                current_category = TaskCategory(name=category.strip())
-
-            # Parse task
-            if task_text.strip() and current_category:
-                task = self._parse_task(task_text, details)
-                current_category.tasks.append(task)
-
-        # Don't forget the last member/category
-        if current_member:
-            if current_category:
-                current_member.categories.append(current_category)
-            result.team_members.append(current_member)
+            seen_members.add(member_name)
+            member = self._parse_member_body(member_name, body_html)
+            if member.categories:
+                result.team_members.append(member)
 
         return result
 
-    def _parse_task(self, task_text: str, details_text: str) -> TaskItem:
-        """Parse a single task from text.
+    def _parse_task_list_expand_format(self, html_content: str) -> list[MemberTasks]:
+        """Parse new format where member names are in task-list elements.
 
-        Args:
-            task_text: Task text possibly containing status tag
-            details_text: Details text (may contain newlines)
-
-        Returns:
-            TaskItem with extracted status, title, and details
+        Pattern: <ac:task-list>...<ac:task-body><strong>NAME</strong>...</ac:task-body>...</ac:task-list>
+        followed by <ac:structured-macro ac:name="expand">...<ac:parameter ac:name="title">자세히 보기</ac:parameter>...
         """
-        status = "진행"  # Default status
-        title = task_text.strip()
+        members: list[MemberTasks] = []
 
-        # Extract status from text
-        for status_name, pattern in self.STATUS_PATTERNS.items():
-            if pattern.search(task_text):
-                status = status_name
-                title = pattern.sub("", task_text).strip()
-                break
+        # Find all task-list + expand pairs
+        # Pattern: task with member name, followed by expand with "자세히 보기"
+        task_pattern = re.compile(
+            r"<ac:task-list[^>]*>.*?<ac:task>.*?"
+            r"<ac:task-body>.*?<strong>(.*?)</strong>.*?</ac:task-body>"
+            r".*?</ac:task>.*?</ac:task-list>",
+            re.DOTALL,
+        )
 
-        # Parse details (split by newlines or bullet points)
+        expand_pattern = re.compile(
+            r'<ac:structured-macro[^>]*ac:name="expand"[^>]*>'
+            r'.*?<ac:parameter ac:name="title">(.*?)</ac:parameter>'
+            r".*?<ac:rich-text-body>(.*?)</ac:rich-text-body>"
+            r".*?</ac:structured-macro>",
+            re.DOTALL,
+        )
+
+        # Find all task names and their positions
+        task_matches = list(task_pattern.finditer(html_content))
+        expand_matches = list(expand_pattern.finditer(html_content))
+
+        if not task_matches:
+            return []
+
+        # Check if this looks like the new format (expands have "자세히 보기" title)
+        detail_expands = [
+            m for m in expand_matches if m.group(1).strip() == "자세히 보기"
+        ]
+        if not detail_expands:
+            return []
+
+        # Match each task with its following expand
+        seen_members: set[str] = set()
+        for task_match in task_matches:
+            member_name = task_match.group(1).strip()
+            task_end_pos = task_match.end()
+
+            # Skip if name is too long (likely not a person's name)
+            if len(member_name) > 10:
+                continue
+
+            # Find the next expand macro after this task
+            # Use >= because the expand may start exactly where the task ends
+            for expand_match in detail_expands:
+                if expand_match.start() >= task_end_pos:
+                    body_html = expand_match.group(2).strip()
+
+                    # Skip if we already processed this member
+                    if member_name in seen_members:
+                        members = [m for m in members if m.name != member_name]
+
+                    seen_members.add(member_name)
+                    member = self._parse_member_body(member_name, body_html)
+                    if member.categories:
+                        members.append(member)
+                    break
+
+        return members
+
+    def _parse_member_body(self, name: str, body_html: str) -> MemberTasks:
+        """Parse a member's body HTML to extract categories and tasks.
+
+        The structure is nested <ul>/<li>:
+        - Level 1 li: <strong>Category</strong>
+        - Level 2 li: [status] task title (with optional <a> or <ac:link>)
+        - Level 3 li: detail items
+        """
+        member = MemberTasks(name=name)
+
+        # Strip all Confluence-specific tags to get clean HTML
+        clean_html = self._clean_confluence_html(body_html)
+
+        # Try to parse as XML
+        try:
+            # Wrap in root element
+            xml_str = f"<root>{clean_html}</root>"
+            root = ET.fromstring(xml_str)
+        except ET.ParseError:
+            logger.debug("XML parse failed for member %s, using regex fallback", name)
+            return self._parse_member_body_regex(name, body_html)
+
+        # Find ALL top-level <ul> elements (some members have multiple <ul> blocks)
+        # Use ./ul for direct children, not .//ul which finds nested ones too
+        top_uls = root.findall("./ul")
+        if not top_uls:
+            # Fallback: try to find any ul
+            top_uls = root.findall(".//ul")
+            # Filter to only include top-level uls (not nested inside another ul)
+            if top_uls:
+                top_uls = [ul for ul in top_uls if root.find(f".//ul//{ul.tag}") != ul]
+
+        if not top_uls:
+            return member
+
+        # Each top-level <li> in each <ul> is a category
+        for top_ul in top_uls:
+            for cat_li in top_ul.findall("./li"):
+                category = self._parse_category_li(cat_li)
+                if category and (category.tasks or category.name):
+                    member.categories.append(category)
+
+        return member
+
+    def _parse_category_li(self, li: ET.Element) -> TaskCategory | None:
+        """Parse a category <li> element.
+
+        Expected: <li><p><strong>CategoryName</strong></p><ul>...tasks...</ul></li>
+        """
+        # Get category name from <strong> in first <p>
+        cat_name = ""
+        p_elem = li.find("./p")
+        if p_elem is not None:
+            strong = p_elem.find("./strong")
+            if strong is not None:
+                cat_name = _extract_text(strong).strip()
+
+        if not cat_name:
+            return None
+
+        category = TaskCategory(name=cat_name)
+
+        # Find task list (nested <ul>)
+        task_ul = li.find("./ul")
+        if task_ul is None:
+            return category
+
+        for task_li in task_ul.findall("./li"):
+            task = self._parse_task_li(task_li)
+            if task:
+                category.tasks.append(task)
+
+        return category
+
+    def _parse_task_li(self, li: ET.Element) -> TaskItem | None:
+        """Parse a task <li> element.
+
+        Expected: <li><p>[status] task title</p><ul>...details...</ul></li>
+        """
+        # Get task text from <p>
+        p_elem = li.find("./p")
+        if p_elem is None:
+            return None
+
+        task_text = _extract_text(p_elem).strip()
+        if not task_text:
+            return None
+
+        status, title = _parse_status(task_text)
+
+        # Get details from nested <ul>
         details: list[str] = []
-        if details_text:
-            # Split by various delimiters
-            parts = re.split(r"\n|•|·|[-*]\s", details_text)
-            details = [p.strip() for p in parts if p.strip()]
+        detail_ul = li.find("./ul")
+        if detail_ul is not None:
+            for detail_li in detail_ul.findall("./li"):
+                detail_text = _extract_text(detail_li).strip()
+                if detail_text:
+                    details.append(detail_text)
 
         return TaskItem(status=status, title=title, details=details)
+
+    def _clean_confluence_html(self, html: str) -> str:
+        """Remove Confluence-specific XML elements and clean for standard HTML parsing."""
+        # Remove ac:link elements, keeping link body text
+        html = re.sub(
+            r"<ac:link>.*?<ac:link-body>(.*?)</ac:link-body>.*?</ac:link>",
+            r"\1",
+            html,
+            flags=re.DOTALL,
+        )
+
+        # Remove remaining ac: and ri: elements
+        html = re.sub(r"</?ac:[^>]*>", "", html)
+        html = re.sub(r"</?ri:[^>]*>", "", html)
+
+        # Remove Confluence-specific attributes (local-id, etc.)
+        html = re.sub(r'\s+local-id="[^"]*"', "", html)
+
+        # Self-close void elements that might not be self-closed
+        html = re.sub(r"<(br|hr|img)([^>]*?)(?<!/)>", r"<\1\2 />", html)
+
+        # Convert HTML entities to Unicode (XML only supports &amp; &lt; &gt; &apos; &quot;)
+        # Common HTML entities found in Confluence
+        html_entities = {
+            "&middot;": "·",
+            "&nbsp;": " ",
+            "&ndash;": "–",
+            "&mdash;": "—",
+            "&lsquo;": "'",
+            "&rsquo;": "'",
+            "&ldquo;": """,
+            "&rdquo;": """,
+            "&bull;": "•",
+            "&hellip;": "…",
+            "&copy;": "©",
+            "&reg;": "®",
+            "&trade;": "™",
+            "&zwnj;": "\u200c",  # Zero-width non-joiner
+            "&zwj;": "\u200d",  # Zero-width joiner
+        }
+        for entity, char in html_entities.items():
+            html = html.replace(entity, char)
+
+        # Handle numeric entities like &#8226; or &#x2022;
+        html = re.sub(r"&#(\d+);", lambda m: chr(int(m.group(1))), html)
+        html = re.sub(r"&#x([0-9a-fA-F]+);", lambda m: chr(int(m.group(1), 16)), html)
+
+        return html
+
+    def _parse_member_body_regex(self, name: str, body_html: str) -> MemberTasks:
+        """Fallback regex-based parser for member body."""
+        member = MemberTasks(name=name)
+
+        # Extract text content, stripping all tags
+        text = re.sub(r"<[^>]+>", "\n", body_html)
+        text = re.sub(r"\n{2,}", "\n", text).strip()
+
+        current_category: TaskCategory | None = None
+
+        for line in text.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+
+            # Check if this looks like a category (bold text, no status tag)
+            is_status_line = any(p.search(line) for p in STATUS_PATTERNS.values())
+
+            if not is_status_line and len(line) < 30 and not line.startswith("("):
+                # Likely a category name
+                if current_category and current_category.tasks:
+                    member.categories.append(current_category)
+                current_category = TaskCategory(name=line)
+            elif is_status_line and current_category:
+                status, title = _parse_status(line)
+                current_category.tasks.append(TaskItem(status=status, title=title))
+
+        if current_category and current_category.tasks:
+            member.categories.append(current_category)
+
+        return member
+
+    def _parse_with_regex(self, html_content: str) -> ParsedWeeklyReport:
+        """Regex-based fallback parser for non-standard HTML."""
+        result = ParsedWeeklyReport()
+
+        # Try to find member sections by looking for expand macro titles
+        title_pattern = re.compile(r'<ac:parameter ac:name="title">(.*?)</ac:parameter>')
+        body_pattern = re.compile(
+            r"<ac:rich-text-body>(.*?)</ac:rich-text-body>",
+            re.DOTALL,
+        )
+
+        titles = list(title_pattern.finditer(html_content))
+        bodies = list(body_pattern.finditer(html_content))
+
+        if not titles:
+            return result
+
+        # Match titles with their bodies
+        seen: set[str] = set()
+        for _, title_match in enumerate(titles):
+            name = title_match.group(1).strip()
+            if len(name) > 20 or name in seen:
+                continue
+
+            # Find the next body after this title
+            title_end = title_match.end()
+            for body_match in bodies:
+                if body_match.start() > title_end:
+                    seen.add(name)
+                    member = self._parse_member_body_regex(name, body_match.group(1))
+                    if member.categories:
+                        result.team_members.append(member)
+                    break
+
+        return result
 
     def _member_to_dict(self, member: MemberTasks) -> dict:
         """Convert MemberTasks to dict for JSON serialization."""
@@ -231,14 +509,7 @@ class WeeklyReportParser:
         }
 
     def dict_to_parsed_report(self, parsed_data: dict) -> ParsedWeeklyReport:
-        """Convert stored dict back to ParsedWeeklyReport dataclass.
-
-        Args:
-            parsed_data: Dict from DB (WeeklyReport.parsed_data)
-
-        Returns:
-            ParsedWeeklyReport with structured data
-        """
+        """Convert stored dict back to ParsedWeeklyReport dataclass."""
         members = []
         for member_dict in parsed_data.get("team_members", []):
             categories = []
@@ -256,15 +527,7 @@ class WeeklyReportParser:
         return ParsedWeeklyReport(team_members=members)
 
     def get_member_summary(self, parsed_data: dict, member_name: str) -> str:
-        """Get a text summary of a member's tasks for AI context.
-
-        Args:
-            parsed_data: Parsed weekly report data
-            member_name: Name of team member
-
-        Returns:
-            Formatted text summary of member's tasks
-        """
+        """Get a text summary of a member's tasks for AI context."""
         for member in parsed_data.get("team_members", []):
             if member["name"] == member_name:
                 lines = [f"## {member_name}의 주간업무"]
@@ -282,14 +545,7 @@ class WeeklyReportParser:
         return f"'{member_name}'의 업무 정보를 찾을 수 없습니다."
 
     def get_all_members_summary(self, parsed_data: dict) -> str:
-        """Get text summary of all members' tasks for AI context.
-
-        Args:
-            parsed_data: Parsed weekly report data
-
-        Returns:
-            Formatted text summary of all members' tasks
-        """
+        """Get text summary of all members' tasks for AI context."""
         summaries = []
         for member in parsed_data.get("team_members", []):
             summaries.append(self.get_member_summary(parsed_data, member["name"]))

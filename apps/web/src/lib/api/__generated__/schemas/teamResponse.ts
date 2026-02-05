@@ -14,4 +14,5 @@ export interface TeamResponse {
   updated_at: string;
   id: string;
   name: string;
+  has_password?: boolean;
 }

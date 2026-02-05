@@ -1,5 +1,57 @@
 # WeeklyRun
 
+
+---
+
+## 빠른 시작 (Quick Start)
+
+> 모든 명령어는 프로젝트 루트에서 실행
+
+### 🟢 시작
+
+```powershell
+# 1. 인프라 시작 (Docker Desktop 실행 필요)
+mise //apps/api:infra:up
+# 또는: docker compose -f apps/api/docker-compose.infra.yml up -d
+
+# 2. 앱 서버 시작 (Backend + Frontend 동시)
+mise dev
+```
+
+### 🔴 종료
+
+```powershell
+# 1. 앱 서버 종료
+Ctrl+C
+
+# 2. 인프라 종료
+mise //apps/api:infra:down
+# 또는: docker compose -f apps/api/docker-compose.infra.yml down
+
+# 인프라 완전 초기화 (데이터 삭제 포함)
+docker compose -f apps/api/docker-compose.infra.yml down -v
+```
+
+### 🔍 상태 확인
+
+```powershell
+# Docker 컨테이너 상태
+docker ps
+
+# DB 접속
+docker exec -it weeklyrun-postgres psql -U postgres -d weeklyrun
+```
+
+### 🔗 접속 주소
+
+| 서비스 | URL |
+|--------|-----|
+| Web | http://localhost:3000 |
+| API | http://localhost:8000 |
+| API 문서 (Swagger) | http://localhost:8000/docs |
+
+---
+
 **주간회의를 Weeky가 진행하고, 자동으로 회의록을 생성하는 서비스**
 
 [![Backend Tests](https://img.shields.io/badge/tests-397%20passed-brightgreen)]()
@@ -70,7 +122,19 @@ winget install jdx.mise
 
 # 또는 macOS
 brew install mise
+```
 
+mise PATH 및 모노레포 설정 (Windows PowerShell):
+
+```powershell
+# PowerShell 프로필에 추가 (한 번만 실행)
+Add-Content $PROFILE '$env:MISE_EXPERIMENTAL = "1"'
+Add-Content $PROFILE '$env:Path += ";C:\Users\<사용자명>\AppData\Local\Microsoft\WinGet\Packages\jdx.mise_Microsoft.Winget.Source_8wekyb3d8bbwe\mise\bin"'
+```
+
+> PowerShell을 새로 열어야 적용됩니다.
+
+```bash
 # 런타임 설치
 mise install
 ```
@@ -81,6 +145,13 @@ mise install
 # PostgreSQL, Redis 시작
 docker compose -f apps/api/docker-compose.infra.yml up -d
 ```
+
+```bash
+# db 접근
+docker exec -it weeklyrun-postgres psql -U postgres -d weeklyrun
+```
+
+
 
 ### 3. 환경변수 설정
 
@@ -116,19 +187,20 @@ uv run alembic upgrade head
 ### 6. 개발 서버 시작
 
 ```bash
+# Backend(8000) + Frontend(3000) 동시 실행
+mise run dev
+```
+
+또는 개별 실행:
+
+```bash
 # 터미널 1: Backend (http://localhost:8000)
 cd apps/api
-uv run uvicorn src.main:app --reload
+uv run poe dev
 
 # 터미널 2: Frontend (http://localhost:3000)
 cd apps/web
 pnpm dev
-```
-
-또는 mise 사용:
-
-```bash
-mise run dev
 ```
 
 ---

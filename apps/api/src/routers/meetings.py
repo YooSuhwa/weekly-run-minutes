@@ -15,6 +15,7 @@ from src.schemas.meeting import (
     MeetingCreate,
     MeetingResponse,
     MeetingStatusUpdate,
+    MeetingUpdate,
     MeetingWithDetails,
 )
 
@@ -108,6 +109,41 @@ async def get_meeting(
     return meeting
 
 
+@router.put("/{meeting_id}", response_model=MeetingResponse)
+async def update_meeting(
+    meeting_id: UUID,
+    data: MeetingUpdate,
+    db: DB,
+) -> Meeting:
+    """Update meeting details.
+
+    P2 Feature: Supports updating agenda_items for general meetings.
+    """
+    result = await db.execute(select(Meeting).where(Meeting.id == meeting_id))
+    meeting = result.scalar_one_or_none()
+    if not meeting:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Meeting not found",
+        )
+
+    update_data = data.model_dump(exclude_unset=True)
+
+    # Convert agenda_items to dict format for JSON storage
+    if "agenda_items" in update_data and update_data["agenda_items"] is not None:
+        update_data["agenda_items"] = [
+            item.model_dump() if hasattr(item, "model_dump") else item
+            for item in update_data["agenda_items"]
+        ]
+
+    for field, value in update_data.items():
+        setattr(meeting, field, value)
+
+    await db.commit()
+    await db.refresh(meeting)
+    return meeting
+
+
 @router.patch("/{meeting_id}/status", response_model=MeetingResponse)
 async def update_meeting_status(
     meeting_id: UUID,
@@ -174,7 +210,9 @@ async def get_meeting_progress(
             detail="Meeting not found",
         )
 
-    status_val = meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    status_val = (
+        meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    )
     meeting_type_val = (
         meeting.meeting_type.value
         if isinstance(meeting.meeting_type, MeetingType)

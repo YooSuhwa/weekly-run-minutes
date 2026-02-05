@@ -39,9 +39,7 @@ class VocabularyService:
             List of vocabulary terms
         """
         result = await db.execute(
-            select(Vocabulary)
-            .where(Vocabulary.team_id == team_id)
-            .order_by(Vocabulary.term)
+            select(Vocabulary).where(Vocabulary.team_id == team_id).order_by(Vocabulary.term)
         )
         vocabularies = result.scalars().all()
 
@@ -119,12 +117,14 @@ class VocabularyService:
             if term.term in text:
                 count = text.count(term.term)
                 text = text.replace(term.term, term.correction)
-                corrections_made.append({
-                    "original": term.term,
-                    "corrected": term.correction,
-                    "category": str(term.category.value),
-                    "count": count,
-                })
+                corrections_made.append(
+                    {
+                        "original": term.term,
+                        "corrected": term.correction,
+                        "category": str(term.category.value),
+                        "count": count,
+                    }
+                )
                 logger.debug(
                     "Applied vocabulary correction",
                     term=term.term,

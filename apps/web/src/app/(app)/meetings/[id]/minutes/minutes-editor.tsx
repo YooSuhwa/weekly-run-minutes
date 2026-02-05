@@ -4,16 +4,39 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Bold, Italic, List, ListOrdered, Redo, Strikethrough, Undo } from "lucide-react";
-import { useEffect } from "react";
+import { marked } from "marked";
+import TurndownService from "turndown";
+import { useEffect, useMemo, useRef } from "react";
 import type { CorrectionItem } from "@/atoms/minutes";
 import { cn } from "@/lib/utils";
 import { CorrectionHighlight } from "./correction-highlight-extension";
+
+// Configure marked for synchronous parsing
+marked.use({ async: false });
+
+// Create turndown instance for HTML to Markdown conversion
+const turndownService = new TurndownService({
+  headingStyle: "atx",
+  bulletListMarker: "-",
+  codeBlockStyle: "fenced",
+});
+
+// Convert markdown to HTML
+function markdownToHtml(markdown: string): string {
+  return marked.parse(markdown) as string;
+}
+
+// Convert HTML to markdown
+function htmlToMarkdown(html: string): string {
+  return turndownService.turndown(html);
+}
 
 interface MinutesEditorProps {
   content: string;
   onChange: (content: string) => void;
   corrections?: CorrectionItem[];
   activeCorrectionIndex?: number | null;
+  readOnly?: boolean;
 }
 
 export function MinutesEditor({
@@ -21,7 +44,13 @@ export function MinutesEditor({
   onChange,
   corrections = [],
   activeCorrectionIndex = null,
+  readOnly = false,
 }: MinutesEditorProps) {
+  const isInternalUpdate = useRef(false);
+
+  // Convert markdown content to HTML for initial render
+  const initialHtml = useMemo(() => markdownToHtml(content), []);
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -33,17 +62,28 @@ export function MinutesEditor({
         activeCorrectionIndex,
       }),
     ],
-    content,
+    content: initialHtml,
+    editable: !readOnly,
     onUpdate: ({ editor }) => {
-      // Get plain text content (markdown-ish)
-      onChange(editor.getText());
+      // Convert HTML back to markdown for storage
+      const html = editor.getHTML();
+      const markdown = htmlToMarkdown(html);
+      isInternalUpdate.current = true;
+      onChange(markdown);
     },
     editorProps: {
       attributes: {
-        class: "prose prose-sm max-w-none focus:outline-none min-h-[500px] p-4",
+        class: `prose prose-sm max-w-none focus:outline-none min-h-[500px] p-4 ${readOnly ? "opacity-75 cursor-not-allowed" : ""}`,
       },
     },
   });
+
+  // Update editable state when readOnly changes
+  useEffect(() => {
+    if (editor) {
+      editor.setEditable(!readOnly);
+    }
+  }, [editor, readOnly]);
 
   // Update correction highlights when corrections or active index change
   useEffect(() => {
@@ -57,23 +97,34 @@ export function MinutesEditor({
 
   // Update editor content when external content changes
   useEffect(() => {
-    if (editor && content && !editor.isFocused) {
-      const currentContent = editor.getText();
-      if (currentContent !== content) {
-        editor.commands.setContent(content);
+    if (!editor || !content) return;
+
+    // Skip if this is an internal update from onUpdate
+    if (isInternalUpdate.current) {
+      isInternalUpdate.current = false;
+      return;
+    }
+
+    // In readOnly mode or when editor is not focused, always update content
+    if (readOnly || !editor.isFocused) {
+      const html = markdownToHtml(content);
+      const currentHtml = editor.getHTML();
+      if (currentHtml !== html) {
+        editor.commands.setContent(html);
       }
     }
-  }, [content, editor]);
+  }, [content, editor, readOnly]);
 
   if (!editor) return null;
 
   return (
     <div className="rounded-xl border border-border bg-card">
-      {/* Toolbar */}
-      <div className="flex items-center gap-1 border-b border-border px-3 py-2">
+      {/* Toolbar - 6번: 읽기 전용 모드에서 비활성화 */}
+      <div className={`flex items-center gap-1 border-b border-border px-3 py-2 ${readOnly ? "opacity-50 pointer-events-none" : ""}`}>
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBold().run()}
           isActive={editor.isActive("bold")}
+          disabled={readOnly}
           title="Bold"
         >
           <Bold className="h-4 w-4" />
@@ -81,6 +132,7 @@ export function MinutesEditor({
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleItalic().run()}
           isActive={editor.isActive("italic")}
+          disabled={readOnly}
           title="Italic"
         >
           <Italic className="h-4 w-4" />
@@ -88,6 +140,7 @@ export function MinutesEditor({
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleStrike().run()}
           isActive={editor.isActive("strike")}
+          disabled={readOnly}
           title="Strikethrough"
         >
           <Strikethrough className="h-4 w-4" />
@@ -98,6 +151,7 @@ export function MinutesEditor({
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBulletList().run()}
           isActive={editor.isActive("bulletList")}
+          disabled={readOnly}
           title="Bullet List"
         >
           <List className="h-4 w-4" />
@@ -105,6 +159,7 @@ export function MinutesEditor({
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
           isActive={editor.isActive("orderedList")}
+          disabled={readOnly}
           title="Ordered List"
         >
           <ListOrdered className="h-4 w-4" />
@@ -114,14 +169,14 @@ export function MinutesEditor({
 
         <ToolbarButton
           onClick={() => editor.chain().focus().undo().run()}
-          disabled={!editor.can().undo()}
+          disabled={readOnly || !editor.can().undo()}
           title="Undo"
         >
           <Undo className="h-4 w-4" />
         </ToolbarButton>
         <ToolbarButton
           onClick={() => editor.chain().focus().redo().run()}
-          disabled={!editor.can().redo()}
+          disabled={readOnly || !editor.can().redo()}
           title="Redo"
         >
           <Redo className="h-4 w-4" />

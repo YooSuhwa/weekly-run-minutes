@@ -1,7 +1,14 @@
+import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Literal
 from uuid import uuid4
+
+# Use OS certificate store (Windows: corporate proxy CA support)
+if os.getenv("PROJECT_ENV", "local") != "prod":
+    import truststore
+
+    truststore.inject_into_ssl()
 
 import structlog
 from fastapi import FastAPI, Request, Response, status

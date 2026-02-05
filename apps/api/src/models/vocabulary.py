@@ -29,9 +29,7 @@ class Vocabulary(BaseModel):
     """
 
     __tablename__ = "vocabularies"
-    __table_args__ = (
-        UniqueConstraint("team_id", "term", name="uq_team_term"),
-    )
+    __table_args__ = (UniqueConstraint("team_id", "term", name="uq_team_term"),)
 
     team_id: Mapped[UUID] = mapped_column(
         ForeignKey("teams.id", ondelete="CASCADE"),

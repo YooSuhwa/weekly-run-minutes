@@ -29,7 +29,7 @@
 
 최보연
 - AI
-  - [완료] 생성형 AI Slide 비교 테스트: NotebookLM vs Genspark vs Manus (1/5 ~ 1/9)
+  - [완료] 생성형 AI Slide 비교 테스트: NotebookLM vs Genspark vs Manus (1/5 ~ 1/9, 완료)
     - [완료] 생성형 AI Slide 비교 테스트 시나리오 1 - 최보연 (1/7, 완료)
     - [완료] 생성형 AI Slide 비교 테스트 `시나리오 2` - 최보연 (1/8, 완료)
   - [진행] h100 vs Mac Studio 성능 비교 (1/14, 진행)
@@ -44,15 +44,15 @@
 
 유수화
 - AI
-  - [완료] upstage `Solar-Open`의 'from scratch' 공개 검증 세션 정리 (1/2)
+  - [완료] upstage `Solar-Open`의 'from scratch' 공개 검증 세션 정리 (1/2, 완료)
     - 독자 AI관련 이슈 정리 및 산출물 작성 (1/5, 완료)
-  - [완료] 생성형 AI Slide 비교 테스트: NotebookLM vs Genspark vs Manus (1/5 ~ 1/9)
+  - [완료] 생성형 AI Slide 비교 테스트: NotebookLM vs Genspark vs Manus (1/5 ~ 1/9, 완료)
     - AI Slide 생성 도구 1차 테스트 및 산출물 작성 (1/6, 완료)
     - AI Slide 생성 도구 2차 테스트 및 산출물 작성 (1/8, 완료)
     - AI Slide 생성 도구 테스트 결과 팀 내 공유 및 발표 (1/9, 완료)
-  - [진행] 2026년 AI 트렌드 리서치
+  - [진행] 2026년 AI 트렌드 리서치 (1/12~, 진행)
     - 2026년 AI 트렌드 PPT 파악 및 피드백 (1/12, 완료)
-  - AI 딸깍 프로젝트 (1/14~)
+  - [진행] AI 딸깍 프로젝트 (1/14~, 진행)
     - AI 도구를 활용한 프로젝트 개발 방법론 및 활용법 정리 (~1/16, 예정)
 - 기타
   - 제품기술팀 AI 트렌드 공유 미팅 (1/12, 완료)

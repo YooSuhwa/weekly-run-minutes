@@ -24,6 +24,12 @@ class Team(BaseModel):
     # Confluence integration
     confluence_base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     confluence_space_key: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    confluence_username: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    confluence_token: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Chat filtering settings (P2)
+    filtering_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
+    filtering_confidence_threshold: Mapped[float] = mapped_column(default=0.7, nullable=False)
 
     # Relationships
     members: Mapped[list["TeamMember"]] = relationship(

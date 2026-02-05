@@ -12,9 +12,7 @@ class InvalidTransitionError(Exception):
     def __init__(self, from_status: str, to_status: str) -> None:
         self.from_status = from_status
         self.to_status = to_status
-        super().__init__(
-            f"Invalid transition: {from_status} -> {to_status}"
-        )
+        super().__init__(f"Invalid transition: {from_status} -> {to_status}")
 
 
 # Valid transitions for upload mode (P1-lite)
@@ -128,9 +126,7 @@ class MeetingStateMachine:
         Returns:
             True if the transition is valid
         """
-        transitions = (
-            REALTIME_TRANSITIONS if mode == MeetingMode.REALTIME else UPLOAD_TRANSITIONS
-        )
+        transitions = REALTIME_TRANSITIONS if mode == MeetingMode.REALTIME else UPLOAD_TRANSITIONS
         allowed = transitions.get(current_status, set())
         return target_status in allowed
 

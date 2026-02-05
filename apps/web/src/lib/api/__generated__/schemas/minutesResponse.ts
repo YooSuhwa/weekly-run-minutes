@@ -19,4 +19,5 @@ export interface MinutesResponse {
   is_edited: boolean;
   edited_content: string | null;
   corrections: CorrectionItemResponse[];
+  confluence_synced: boolean;
 }

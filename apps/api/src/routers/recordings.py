@@ -168,7 +168,11 @@ async def upload_recording(
 
     # Update meeting status (only for upload mode)
     # For realtime mode, the meeting is already at RECORDING_DONE
-    mode_val = meeting.meeting_mode if isinstance(meeting.meeting_mode, str) else meeting.meeting_mode.value
+    mode_val = (
+        meeting.meeting_mode
+        if isinstance(meeting.meeting_mode, str)
+        else meeting.meeting_mode.value
+    )
     if mode_val == MeetingMode.UPLOAD:
         meeting.status = MeetingStatus.RECORDING_UPLOADED
 
@@ -233,7 +237,11 @@ async def delete_meeting_recording(
     meeting_result = await db.execute(select(Meeting).where(Meeting.id == meeting_id))
     meeting = meeting_result.scalar_one_or_none()
     if meeting and meeting.status == MeetingStatus.RECORDING_UPLOADED:
-        mode_val = meeting.meeting_mode if isinstance(meeting.meeting_mode, str) else meeting.meeting_mode.value
+        mode_val = (
+            meeting.meeting_mode
+            if isinstance(meeting.meeting_mode, str)
+            else meeting.meeting_mode.value
+        )
         if mode_val == MeetingMode.UPLOAD:
             meeting.status = MeetingStatus.WEEKLY_REPORT_LOADED
 

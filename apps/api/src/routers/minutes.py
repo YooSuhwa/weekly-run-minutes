@@ -49,6 +49,7 @@ class MinutesResponse(BaseModel):
     is_edited: bool
     edited_content: str | None
     corrections: list[CorrectionItemResponse]
+    confluence_synced: bool
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -133,9 +134,7 @@ async def generate_minutes_task(meeting_id: UUID) -> None:
             vocab_service = VocabularyService()
             vocabulary = await vocab_service.get_team_vocabulary(db, meeting.team.id)
             vocabulary_prompt = (
-                vocab_service.format_vocabulary_for_prompt(vocabulary)
-                if vocabulary
-                else None
+                vocab_service.format_vocabulary_for_prompt(vocabulary) if vocabulary else None
             )
 
             # Determine meeting type and generate accordingly
@@ -170,6 +169,7 @@ async def generate_minutes_task(meeting_id: UUID) -> None:
                     attendees=attendees,
                     agenda_items=agenda_items,
                     vocabulary_prompt=vocabulary_prompt,
+                    location=meeting.location,
                 )
 
                 # Store minutes with corrections and metadata
@@ -191,6 +191,21 @@ async def generate_minutes_task(meeting_id: UUID) -> None:
                     ],
                 )
                 db.add(minutes)
+
+                # Update meeting title if AI suggested one and current title is auto-generated
+                if general_result.suggested_title and meeting.title.startswith("일반회의 ("):
+                    # Format: "suggested_title (yy/m/d)"
+                    date_str = (
+                        f"{meeting.meeting_date.year % 100}/"
+                        f"{meeting.meeting_date.month}/"
+                        f"{meeting.meeting_date.day}"
+                    )
+                    meeting.title = f"{general_result.suggested_title} ({date_str})"
+                    logger.info(
+                        "Meeting title updated from AI suggestion",
+                        meeting_id=str(meeting_id),
+                        new_title=meeting.title,
+                    )
 
                 logger.info(
                     "General meeting minutes generated successfully",
@@ -216,6 +231,9 @@ async def generate_minutes_task(meeting_id: UUID) -> None:
                     team_name=meeting.team.name,
                     attendees=attendees,
                     vocabulary_prompt=vocabulary_prompt,
+                    context_terms=meeting.context_terms,
+                    context_instructions=meeting.context_instructions,
+                    location=meeting.location,
                 )
 
                 # Store minutes with corrections (including position data)
@@ -291,7 +309,9 @@ async def start_minutes_generation(
         )
 
     # Check if transcription is done
-    status_val = meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    status_val = (
+        meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    )
     allowed_statuses = {"transcribed", "generating_minutes", "draft_ready", "published"}
     if status_val not in allowed_statuses:
         raise HTTPException(
@@ -367,11 +387,13 @@ async def update_meeting_minutes(
 
     minutes.edited_content = data.content_markdown
     minutes.is_edited = True
+    # Mark as out of sync with Confluence if already published
+    minutes.confluence_synced = False
 
     await db.commit()
     await db.refresh(minutes)
 
-    logger.info("Minutes updated", meeting_id=str(meeting_id))
+    logger.info("Minutes updated", meeting_id=str(meeting_id), confluence_synced=False)
 
     return minutes
 
@@ -384,13 +406,19 @@ async def publish_minutes_to_confluence(
     meeting_id: UUID,
     db: DB,
 ) -> dict:
-    """Publish meeting minutes to Confluence.
+    """Publish or re-publish meeting minutes to Confluence.
 
-    Creates a new Confluence page with the minutes content.
+    Creates a new Confluence page or updates existing page.
+    Uses team-specific Confluence settings if available.
     """
-    # Get meeting with minutes
+    # Get meeting with minutes and team
     result = await db.execute(
-        select(Meeting).where(Meeting.id == meeting_id).options(selectinload(Meeting.minutes))
+        select(Meeting)
+        .where(Meeting.id == meeting_id)
+        .options(
+            selectinload(Meeting.minutes),
+            selectinload(Meeting.team),
+        )
     )
     meeting = result.scalar_one_or_none()
 
@@ -406,40 +434,66 @@ async def publish_minutes_to_confluence(
             detail="Minutes must be generated first",
         )
 
-    if meeting.confluence_page_id:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Minutes already published to Confluence",
-        )
-
     # Get the content to publish (edited if available, otherwise original)
     content = meeting.minutes.edited_content or meeting.minutes.content_markdown
+    title = f"{meeting.meeting_date.isoformat()} {meeting.title} 회의록"
 
-    # Create Confluence page
-    confluence = ConfluenceService()
+    # Use team-specific Confluence settings if available (P2: Multi-team support)
+    confluence = ConfluenceService.from_team(meeting.team)
+
     try:
-        page_result = await confluence.upload_meeting_minutes(
-            title=f"{meeting.meeting_date.isoformat()} {meeting.title} 회의록",
-            markdown_content=content,
-        )
+        if meeting.confluence_page_id:
+            # Re-publish: Update existing page
+            # Get current page version first
+            existing_page = await confluence.get_page_by_id(meeting.confluence_page_id)
+            current_version = existing_page.get("version", {}).get("number", 1)
+
+            # Convert markdown to HTML
+            html_content = confluence._markdown_to_confluence_html(content)
+
+            # Update the page
+            page = await confluence.update_page(
+                page_id=meeting.confluence_page_id,
+                title=title,
+                body_html=html_content,
+                version=current_version,
+            )
+            page_result = {
+                "id": page["id"],
+                "url": meeting.confluence_page_url,  # URL doesn't change
+                "title": page["title"],
+            }
+            logger.info(
+                "Minutes re-published to Confluence",
+                meeting_id=str(meeting_id),
+                page_id=page["id"],
+                new_version=current_version + 1,
+            )
+        else:
+            # First publish: Create new page
+            page_result = await confluence.upload_meeting_minutes(
+                title=title,
+                markdown_content=content,
+            )
+            # Update meeting with Confluence info
+            meeting.confluence_page_id = page_result["id"]
+            meeting.confluence_page_url = page_result["url"]
+            logger.info(
+                "Minutes published to Confluence",
+                meeting_id=str(meeting_id),
+                page_id=page_result["id"],
+            )
     except ConfluenceError as e:
         raise HTTPException(
             status_code=e.status_code or 500,
             detail=f"Confluence upload failed: {e}",
         )
 
-    # Update meeting with Confluence info
-    meeting.confluence_page_id = page_result["id"]
-    meeting.confluence_page_url = page_result["url"]
+    # Update meeting status and sync flag
     meeting.status = MeetingStatus.PUBLISHED
+    meeting.minutes.confluence_synced = True
 
     await db.commit()
-
-    logger.info(
-        "Minutes published to Confluence",
-        meeting_id=str(meeting_id),
-        page_id=page_result["id"],
-    )
 
     return {
         "meeting_id": meeting_id,

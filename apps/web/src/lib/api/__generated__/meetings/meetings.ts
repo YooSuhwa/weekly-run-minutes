@@ -31,6 +31,7 @@ import type {
   MeetingCreate,
   MeetingResponse,
   MeetingStatusUpdate,
+  MeetingUpdate,
   MeetingWithDetails
 } from '.././schemas';
 
@@ -138,6 +139,11 @@ export function useListMeetingsApiV1MeetingsGet<TData = Awaited<ReturnType<typeo
 
 P2 Feature: Supports meeting_type for WEEKLY_REPORT or GENERAL meetings.
 GENERAL meetings can have optional agenda_items.
+
+If meeting_date is not provided, defaults to today.
+If title is not provided, defaults to:
+- Weekly report: "주간회의 (yy/m/d)"
+- General: "일반회의 (yy/m/d)" (can be updated later by AI)
  * @summary Create Meeting
  */
 export const createMeetingApiV1MeetingsPost = (
@@ -292,6 +298,73 @@ export function useGetMeetingApiV1MeetingsMeetingIdGet<TData = Awaited<ReturnTyp
 
 
 /**
+ * Update meeting details.
+
+P2 Feature: Supports updating agenda_items for general meetings.
+ * @summary Update Meeting
+ */
+export const updateMeetingApiV1MeetingsMeetingIdPut = (
+    meetingId: string,
+    meetingUpdate: MeetingUpdate,
+ signal?: AbortSignal
+) => {
+      
+      
+      return apiClient<MeetingResponse>(
+      {url: `/api/v1/meetings/${meetingId}`, method: 'PUT',
+      headers: {'Content-Type': 'application/json', },
+      data: meetingUpdate, signal
+    },
+      );
+    }
+  
+
+
+export const getUpdateMeetingApiV1MeetingsMeetingIdPutMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMeetingApiV1MeetingsMeetingIdPut>>, TError,{meetingId: string;data: MeetingUpdate}, TContext>, }
+): UseMutationOptions<Awaited<ReturnType<typeof updateMeetingApiV1MeetingsMeetingIdPut>>, TError,{meetingId: string;data: MeetingUpdate}, TContext> => {
+
+const mutationKey = ['updateMeetingApiV1MeetingsMeetingIdPut'];
+const {mutation: mutationOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMeetingApiV1MeetingsMeetingIdPut>>, {meetingId: string;data: MeetingUpdate}> = (props) => {
+          const {meetingId,data} = props ?? {};
+
+          return  updateMeetingApiV1MeetingsMeetingIdPut(meetingId,data,)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMeetingApiV1MeetingsMeetingIdPutMutationResult = NonNullable<Awaited<ReturnType<typeof updateMeetingApiV1MeetingsMeetingIdPut>>>
+    export type UpdateMeetingApiV1MeetingsMeetingIdPutMutationBody = MeetingUpdate
+    export type UpdateMeetingApiV1MeetingsMeetingIdPutMutationError = HTTPValidationError
+
+    /**
+ * @summary Update Meeting
+ */
+export const useUpdateMeetingApiV1MeetingsMeetingIdPut = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMeetingApiV1MeetingsMeetingIdPut>>, TError,{meetingId: string;data: MeetingUpdate}, TContext>, }
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateMeetingApiV1MeetingsMeetingIdPut>>,
+        TError,
+        {meetingId: string;data: MeetingUpdate},
+        TContext
+      > => {
+      return useMutation(getUpdateMeetingApiV1MeetingsMeetingIdPutMutationOptions(options), queryClient);
+    }
+    /**
  * Delete a meeting and all related data.
  * @summary Delete Meeting
  */

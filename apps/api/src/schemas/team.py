@@ -38,6 +38,10 @@ class TeamCreate(BaseSchema):
     password: str | None = Field(None, min_length=4, max_length=128)
     confluence_base_url: str | None = Field(None, max_length=500)
     confluence_space_key: str | None = Field(None, max_length=50)
+    confluence_username: str | None = Field(None, max_length=100)
+    confluence_token: str | None = Field(None, max_length=500)
+    filtering_enabled: bool = Field(default=True)
+    filtering_confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
     members: list[TeamMemberCreate] | None = None
 
 
@@ -48,12 +52,17 @@ class TeamUpdate(BaseSchema):
     password: str | None = Field(None, min_length=4, max_length=128)
     confluence_base_url: str | None = Field(None, max_length=500)
     confluence_space_key: str | None = Field(None, max_length=50)
+    confluence_username: str | None = Field(None, max_length=100)
+    confluence_token: str | None = Field(None, max_length=500)
+    filtering_enabled: bool | None = None
+    filtering_confidence_threshold: float | None = Field(None, ge=0.0, le=1.0)
 
 
 class TeamResponse(IDSchema, TimestampSchema):
     """Schema for team response (list view - no sensitive data)."""
 
     name: str
+    has_password: bool = False
 
 
 class TeamDetailResponse(TeamResponse):
@@ -61,7 +70,11 @@ class TeamDetailResponse(TeamResponse):
 
     confluence_base_url: str | None = None
     confluence_space_key: str | None = None
+    confluence_username: str | None = None
+    has_confluence_token: bool = False
     has_password: bool = False
+    filtering_enabled: bool = True
+    filtering_confidence_threshold: float = 0.7
 
 
 class TeamWithMembers(TeamDetailResponse):

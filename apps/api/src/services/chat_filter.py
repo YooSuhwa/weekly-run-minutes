@@ -162,7 +162,7 @@ class ChatFilterService:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.1,  # Low temperature for consistent classification
-                max_tokens=2048,
+                max_completion_tokens=2048,
                 response_format={"type": "json_object"},
             )
 
@@ -290,11 +290,15 @@ class ChatFilterService:
 
         if result.filtered:
             return result.filtered[0]
-        return result.work_related[0] if result.work_related else FilterResult(
-            segment_id="single",
-            is_work_related=True,
-            filter_reason=None,
-            confidence=0.5,
+        return (
+            result.work_related[0]
+            if result.work_related
+            else FilterResult(
+                segment_id="single",
+                is_work_related=True,
+                filter_reason=None,
+                confidence=0.5,
+            )
         )
 
     def should_filter(self, result: FilterResult, threshold: float = 0.7) -> bool:

@@ -22,11 +22,25 @@ class MeetingCreate(BaseSchema):
     """Schema for creating a meeting."""
 
     team_id: UUID
-    meeting_date: date
-    title: str = Field(..., min_length=1, max_length=200)
+    meeting_date: date | None = None  # Optional: defaults to today
+    title: str | None = Field(None, min_length=1, max_length=200)  # Optional: auto-generated
+    location: str | None = Field(None, max_length=200)  # Optional: meeting location
     meeting_mode: MeetingMode = MeetingMode.UPLOAD
     meeting_type: MeetingType = MeetingType.WEEKLY_REPORT
     agenda_items: list[AgendaItem] | None = None
+    context_terms: list[str] | None = Field(None, max_length=50)
+    context_instructions: str | None = Field(None, max_length=1000)
+
+
+class MeetingUpdate(BaseSchema):
+    """Schema for updating a meeting."""
+
+    title: str | None = Field(None, min_length=1, max_length=200)
+    meeting_date: date | None = None
+    location: str | None = Field(None, max_length=200)
+    agenda_items: list[AgendaItem] | None = None
+    context_terms: list[str] | None = Field(None, max_length=50)
+    context_instructions: str | None = Field(None, max_length=1000)
 
 
 class MeetingStatusUpdate(BaseSchema):
@@ -59,6 +73,7 @@ class MeetingMinutesInfo(BaseSchema):
     id: UUID
     ai_model: str
     is_edited: bool
+    confluence_synced: bool
     created_at: datetime
 
 
@@ -68,6 +83,7 @@ class MeetingResponse(IDSchema, TimestampSchema):
     team_id: UUID
     meeting_date: date
     title: str
+    location: str | None
     status: MeetingStatus
     meeting_mode: str
     meeting_type: str
@@ -75,6 +91,8 @@ class MeetingResponse(IDSchema, TimestampSchema):
     confluence_page_id: str | None
     confluence_page_url: str | None
     agenda_items: list[AgendaItem] | None
+    context_terms: list[str] | None
+    context_instructions: str | None
 
 
 class MeetingWithDetails(MeetingResponse):

@@ -24,6 +24,7 @@ dependencies = [
     "markdown>=3.7",
     # Password hashing
     "passlib[bcrypt]>=1.7.4",
+    "truststore>=0.10.4",
 ]
 
 [dependency-groups]

@@ -266,6 +266,7 @@ export const useUpdateMeetingMinutesApiV1MinutesMeetingsMeetingIdMinutesPut = <T
  * Publish meeting minutes to Confluence.
 
 Creates a new Confluence page with the minutes content.
+Uses team-specific Confluence settings if available.
  * @summary Publish Minutes To Confluence
  */
 export const publishMinutesToConfluenceApiV1MinutesMeetingsMeetingIdPublishPost = (

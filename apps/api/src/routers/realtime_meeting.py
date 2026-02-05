@@ -82,7 +82,11 @@ async def start_realtime_meeting(meeting_id: UUID, db: DB) -> dict:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
 
     # Validate mode
-    mode_val = meeting.meeting_mode if isinstance(meeting.meeting_mode, str) else meeting.meeting_mode.value
+    mode_val = (
+        meeting.meeting_mode
+        if isinstance(meeting.meeting_mode, str)
+        else meeting.meeting_mode.value
+    )
     if mode_val != MeetingMode.REALTIME:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -90,9 +94,13 @@ async def start_realtime_meeting(meeting_id: UUID, db: DB) -> dict:
         )
 
     # Validate transition
-    status_val = meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    status_val = (
+        meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    )
     try:
-        state_machine.validate_transition(status_val, MeetingStatus.IN_PROGRESS, MeetingMode.REALTIME)
+        state_machine.validate_transition(
+            status_val, MeetingStatus.IN_PROGRESS, MeetingMode.REALTIME
+        )
     except InvalidTransitionError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -137,7 +145,9 @@ async def get_meeting_progress(meeting_id: UUID, db: DB) -> dict:
     if not meeting:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
 
-    status_val = meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    status_val = (
+        meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    )
 
     return {
         "meeting_id": meeting_id,
@@ -152,9 +162,7 @@ async def get_meeting_progress(meeting_id: UUID, db: DB) -> dict:
     "/meetings/{meeting_id}/progress",
     response_model=MeetingProgressResponse,
 )
-async def update_meeting_progress(
-    meeting_id: UUID, data: MeetingProgressUpdate, db: DB
-) -> dict:
+async def update_meeting_progress(meeting_id: UUID, data: MeetingProgressUpdate, db: DB) -> dict:
     """Update meeting progress (current speaker/item)."""
     result = await db.execute(select(Meeting).where(Meeting.id == meeting_id))
     meeting = result.scalar_one_or_none()
@@ -162,7 +170,9 @@ async def update_meeting_progress(
     if not meeting:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
 
-    status_val = meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    status_val = (
+        meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    )
     if status_val != MeetingStatus.IN_PROGRESS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -195,7 +205,9 @@ async def advance_to_next_item(meeting_id: UUID, db: DB) -> dict:
     if not meeting:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
 
-    status_val = meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    status_val = (
+        meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    )
     if status_val != MeetingStatus.IN_PROGRESS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -248,7 +260,9 @@ async def advance_to_next_speaker(meeting_id: UUID, db: DB) -> dict:
     if not meeting:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
 
-    status_val = meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    status_val = (
+        meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    )
     if status_val != MeetingStatus.IN_PROGRESS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -285,7 +299,9 @@ async def end_realtime_meeting(meeting_id: UUID, db: DB) -> dict:
     if not meeting:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
 
-    status_val = meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    status_val = (
+        meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    )
     try:
         state_machine.validate_transition(
             status_val, MeetingStatus.RECORDING_DONE, MeetingMode.REALTIME

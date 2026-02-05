@@ -1,12 +1,13 @@
 "use client";
 
 import { useSetAtom } from "jotai";
-import { Lock, Users } from "lucide-react";
+import { Lock, LockOpen, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { selectedTeamIdAtom } from "@/atoms/team";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Weeky } from "@/components/weeky/weeky";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,7 @@ import {
 interface PasswordDialogState {
   open: boolean;
   team: TeamResponse | null;
+  hasPassword: boolean;
 }
 
 export default function TeamsPage() {
@@ -36,6 +38,7 @@ export default function TeamsPage() {
   const [passwordDialog, setPasswordDialog] = useState<PasswordDialogState>({
     open: false,
     team: null,
+    hasPassword: false,
   });
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
@@ -56,12 +59,16 @@ export default function TeamsPage() {
   });
 
   const handleTeamClick = (team: TeamResponse) => {
-    // For now, assume all teams may have passwords
-    // In a real scenario, we'd check if the team has a password via API
-    // Since TeamResponse doesn't expose hasPassword, show password dialog
-    setPasswordDialog({ open: true, team });
-    setPassword("");
-    setAuthError(null);
+    // Check if team has password
+    if (team.has_password) {
+      // Show password dialog
+      setPasswordDialog({ open: true, team, hasPassword: true });
+      setPassword("");
+      setAuthError(null);
+    } else {
+      // No password, select directly
+      handleDirectSelect(team);
+    }
   };
 
   const handleDirectSelect = (team: TeamResponse) => {
@@ -83,23 +90,16 @@ export default function TeamsPage() {
   };
 
   const handleCloseDialog = () => {
-    setPasswordDialog({ open: false, team: null });
+    setPasswordDialog({ open: false, team: null, hasPassword: false });
     setPassword("");
     setAuthError(null);
-  };
-
-  const handleSkipPassword = () => {
-    if (passwordDialog.team) {
-      handleDirectSelect(passwordDialog.team);
-      handleCloseDialog();
-    }
   };
 
   if (isLoading) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-8">
-        <div className="flex items-center justify-center py-16">
-          <p className="text-muted-foreground">팀 목록을 불러오는 중...</p>
+        <div className="flex flex-col items-center justify-center py-16">
+          <Weeky expression="thinking" size="lg" message="팀 목록을 불러오고 있어요..." />
         </div>
       </div>
     );
@@ -108,8 +108,8 @@ export default function TeamsPage() {
   if (error) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-8">
-        <div className="flex items-center justify-center py-16">
-          <p className="text-destructive">팀 목록을 불러오는데 실패했습니다</p>
+        <div className="flex flex-col items-center justify-center py-16">
+          <Weeky expression="sorry" size="lg" message="팀 목록을 불러오는데 실패했어요" />
         </div>
       </div>
     );
@@ -117,7 +117,14 @@ export default function TeamsPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
-      <div className="mb-8 text-center">
+      <div className="mb-8 flex flex-col items-center">
+        <Weeky
+          expression="greeting"
+          variant="bubble"
+          size="lg"
+          message="안녕하세요! 어떤 팀으로 입장하시겠어요?"
+          className="mb-6"
+        />
         <h1 className="text-3xl font-bold">팀 선택</h1>
         <p className="mt-2 text-muted-foreground">회의를 진행할 팀을 선택해주세요</p>
       </div>
@@ -141,7 +148,11 @@ export default function TeamsPage() {
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">{team.name}</CardTitle>
-                  <Lock className="h-4 w-4 text-muted-foreground" />
+                  {team.has_password ? (
+                    <Lock className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <LockOpen className="h-4 w-4 text-muted-foreground" />
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -159,11 +170,7 @@ export default function TeamsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{passwordDialog.team?.name}</DialogTitle>
-            <DialogDescription>
-              팀에 접근하려면 비밀번호를 입력해주세요.
-              <br />
-              비밀번호가 없는 팀이라면 건너뛰기를 선택하세요.
-            </DialogDescription>
+            <DialogDescription>팀에 접근하려면 비밀번호를 입력해주세요.</DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handlePasswordSubmit} className="space-y-4">
@@ -175,6 +182,7 @@ export default function TeamsPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 data-testid="password-input"
                 aria-invalid={!!authError}
+                autoFocus
               />
               {authError && (
                 <p className="text-sm text-destructive" data-testid="auth-error">
@@ -184,8 +192,8 @@ export default function TeamsPage() {
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleSkipPassword}>
-                건너뛰기
+              <Button type="button" variant="outline" onClick={handleCloseDialog}>
+                취소
               </Button>
               <Button
                 type="submit"
