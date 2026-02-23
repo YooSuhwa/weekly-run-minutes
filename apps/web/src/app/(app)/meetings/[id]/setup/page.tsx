@@ -20,11 +20,13 @@ import { CSS } from "@dnd-kit/utilities";
 import { useAtom } from "jotai";
 import {
   Check,
+  FileText,
   GripVertical,
   Link as LinkIcon,
   ListTodo,
   Loader2,
   MessageSquare,
+  Mic,
   Plus,
   Tag,
   Users,
@@ -95,7 +97,10 @@ import {
   useGetTeamApiV1TeamsTeamIdGet,
   useListTeamsApiV1TeamsGet,
 } from "@/lib/api/__generated__/teams/teams";
-import { useStartTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost } from "@/lib/api/__generated__/transcription/transcription";
+import {
+  useImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost,
+  useStartTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost,
+} from "@/lib/api/__generated__/transcription/transcription";
 import { useLoadWeeklyReportForMeetingApiV1WeeklyReportsMeetingsMeetingIdWeeklyReportPost } from "@/lib/api/__generated__/weekly-reports/weekly-reports";
 import { cn } from "@/lib/utils";
 
@@ -189,6 +194,11 @@ export default function MeetingSetupPage() {
   const [confluencePageId, setConfluencePageId] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [weeklyReportPreview, setWeeklyReportPreview] = useState<WeeklyReportResponse | null>(null);
+
+  // Upload input type toggle: audio recording or script text
+  type UploadInputType = "audio" | "script";
+  const [uploadInputType, setUploadInputType] = useState<UploadInputType>("audio");
+  const [scriptFile, setScriptFile] = useState<File | null>(null);
 
   // Meeting attendees (team members + guests, with order)
   const [attendees, setAttendees] = useState<MeetingAttendee[]>([]);
@@ -311,6 +321,22 @@ export default function MeetingSetupPage() {
     },
   );
 
+  // Import transcript mutation (for script text files)
+  const importTranscript =
+    useImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost({
+      mutation: {
+        onSuccess: () => {
+          router.push(`/meetings/${meetingId}/processing`);
+        },
+        onError: () => {
+          router.push(`/meetings/${meetingId}/processing`);
+        },
+        onSettled: () => {
+          setIsUploading(false);
+        },
+      },
+    });
+
   // Attendee management handlers
   const handleAttendeeDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -410,13 +436,18 @@ export default function MeetingSetupPage() {
   };
 
   const handleStartProcessing = async () => {
-    if (!recording.file) {
-      toast.error("녹음 파일을 업로드해주세요");
+    const isScriptMode = uploadInputType === "script";
+    const currentFile = isScriptMode ? scriptFile : recording.file;
+
+    if (!currentFile) {
+      toast.error(isScriptMode ? "스크립트 파일을 업로드해주세요" : "녹음 파일을 업로드해주세요");
       return;
     }
 
     setIsUploading(true);
-    setRecording({ ...recording, uploadStatus: "uploading", uploadProgress: 0 });
+    if (!isScriptMode) {
+      setRecording({ ...recording, uploadStatus: "uploading", uploadProgress: 0 });
+    }
 
     // Save meeting metadata (attendees, agenda items, context terms, context instructions)
     const hasAgendaItems = isGeneralMeeting && agendaItems.some((item) => item.title.trim());
@@ -444,10 +475,19 @@ export default function MeetingSetupPage() {
       console.error("Failed to save meeting metadata:", error);
     }
 
-    uploadRecording.mutate({
-      meetingId,
-      data: { file: recording.file },
-    });
+    if (isScriptMode) {
+      // Script mode: import transcript directly (skip STT)
+      importTranscript.mutate({
+        meetingId,
+        data: { file: currentFile },
+      });
+    } else {
+      // Audio mode: upload recording then start transcription
+      uploadRecording.mutate({
+        meetingId,
+        data: { file: currentFile },
+      });
+    }
   };
 
   // Get summary of weekly report tasks for smart preview
@@ -472,7 +512,7 @@ export default function MeetingSetupPage() {
         <div className="flex items-start gap-4 rounded-2xl bg-gradient-to-br from-primary/5 via-transparent to-transparent p-4 sm:p-6">
           <Weeky
             expression={
-              recording.file
+              (uploadInputType === "script" ? scriptFile : recording.file)
                 ? "celebrating"
                 : confluence.weeklyReportLoaded
                   ? "noting"
@@ -480,10 +520,12 @@ export default function MeetingSetupPage() {
             }
             size="md"
             message={
-              recording.file
-                ? "준비가 다 됐어요! 이제 회의록을 생성해볼까요?"
+              (uploadInputType === "script" ? scriptFile : recording.file)
+                ? uploadInputType === "script"
+                  ? "스크립트가 준비됐어요! 이제 회의록을 생성해볼까요?"
+                  : "준비가 다 됐어요! 이제 회의록을 생성해볼까요?"
                 : confluence.weeklyReportLoaded
-                  ? "주간업무록을 확인했어요! 녹음 파일을 업로드해주세요."
+                  ? "주간업무록을 확인했어요! 파일을 업로드해주세요."
                   : "회의록을 생성할 준비를 해볼까요?"
             }
           />
@@ -919,7 +961,8 @@ export default function MeetingSetupPage() {
         <Card
           className={cn(
             "transition-all duration-300",
-            recording.file && "border-primary/40 bg-primary/5 shadow-sm",
+            (uploadInputType === "script" ? scriptFile : recording.file) &&
+              "border-primary/40 bg-primary/5 shadow-sm",
           )}
         >
           <CardHeader className="pb-3">
@@ -927,47 +970,103 @@ export default function MeetingSetupPage() {
               <div
                 className={cn(
                   "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
-                  recording.file ? "bg-primary/20" : "bg-muted",
+                  (uploadInputType === "script" ? scriptFile : recording.file)
+                    ? "bg-primary/20"
+                    : "bg-muted",
                 )}
               >
-                <svg
-                  className={cn(
-                    "h-4 w-4",
-                    recording.file ? "text-primary" : "text-muted-foreground",
-                  )}
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                  <line x1="12" x2="12" y1="19" y2="22" />
-                </svg>
+                {uploadInputType === "script" ? (
+                  <FileText
+                    className={cn("h-4 w-4", scriptFile ? "text-primary" : "text-muted-foreground")}
+                  />
+                ) : (
+                  <Mic
+                    className={cn(
+                      "h-4 w-4",
+                      recording.file ? "text-primary" : "text-muted-foreground",
+                    )}
+                  />
+                )}
               </div>
-              녹음 파일
-              {recording.file && (
+              {uploadInputType === "script" ? "스크립트 텍스트" : "녹음 파일"}
+              {(uploadInputType === "script" ? scriptFile : recording.file) && (
                 <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
                   준비됨
                 </span>
               )}
             </CardTitle>
             <CardDescription>
-              회의 녹음 파일을 업로드해주세요 (mp3, wav, webm, m4a / 최대 100MB)
+              {uploadInputType === "script"
+                ? "STT가 완료된 스크립트 텍스트 파일을 업로드해주세요 (txt / 최대 5MB)"
+                : "회의 녹음 파일을 업로드해주세요 (mp3, wav, webm, m4a / 최대 100MB)"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <FileUpload
-              file={recording.file}
-              onFileSelect={handleFileSelect}
-              onFileRemove={handleFileRemove}
-              disabled={isUploading}
-            />
-            {recording.uploadStatus === "uploading" && (
+            {/* Input type toggle */}
+            <div className="flex gap-1 rounded-lg bg-muted p-1" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={uploadInputType === "audio"}
+                onClick={() => {
+                  if (uploadInputType !== "audio") {
+                    setUploadInputType("audio");
+                    setScriptFile(null);
+                  }
+                }}
+                disabled={isUploading}
+                className={cn(
+                  "flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all",
+                  uploadInputType === "audio"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                  isUploading && "cursor-not-allowed opacity-50",
+                )}
+              >
+                <Mic className="h-4 w-4" />
+                녹음 파일
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={uploadInputType === "script"}
+                onClick={() => {
+                  if (uploadInputType !== "script") {
+                    setUploadInputType("script");
+                    setRecording({ ...recording, file: null, uploadStatus: "idle" });
+                  }
+                }}
+                disabled={isUploading}
+                className={cn(
+                  "flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all",
+                  uploadInputType === "script"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                  isUploading && "cursor-not-allowed opacity-50",
+                )}
+              >
+                <FileText className="h-4 w-4" />
+                스크립트 텍스트
+              </button>
+            </div>
+
+            {uploadInputType === "script" ? (
+              <FileUpload
+                file={scriptFile}
+                onFileSelect={setScriptFile}
+                onFileRemove={() => setScriptFile(null)}
+                disabled={isUploading}
+                mode="text"
+              />
+            ) : (
+              <FileUpload
+                file={recording.file}
+                onFileSelect={handleFileSelect}
+                onFileRemove={handleFileRemove}
+                disabled={isUploading}
+              />
+            )}
+            {recording.uploadStatus === "uploading" && uploadInputType === "audio" && (
               <ProgressBar value={recording.uploadProgress} label="업로드 중" className="mt-4" />
             )}
           </CardContent>
@@ -975,16 +1074,20 @@ export default function MeetingSetupPage() {
 
         {/* Start Button */}
         <div className="flex flex-col items-end gap-3 pt-2">
-          {!recording.file && (
-            <p className="text-sm text-muted-foreground">녹음 파일을 업로드하면 시작할 수 있어요</p>
+          {!(uploadInputType === "script" ? scriptFile : recording.file) && (
+            <p className="text-sm text-muted-foreground">
+              {uploadInputType === "script"
+                ? "스크립트 파일을 업로드하면 시작할 수 있어요"
+                : "녹음 파일을 업로드하면 시작할 수 있어요"}
+            </p>
           )}
           <Button
             size="lg"
             onClick={handleStartProcessing}
-            disabled={!recording.file || isUploading}
+            disabled={!(uploadInputType === "script" ? scriptFile : recording.file) || isUploading}
             className={cn(
               "cursor-pointer px-8 transition-all duration-200",
-              recording.file &&
+              (uploadInputType === "script" ? scriptFile : recording.file) &&
                 !isUploading &&
                 "shadow-lg shadow-primary/25 hover:shadow-primary/40",
             )}
@@ -992,7 +1095,7 @@ export default function MeetingSetupPage() {
             {isUploading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                업로드 중...
+                {uploadInputType === "script" ? "처리 중..." : "업로드 중..."}
               </>
             ) : (
               "회의록 생성 시작"

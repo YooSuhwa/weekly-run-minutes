@@ -1,6 +1,7 @@
 """Tests for transcription API endpoints."""
 
 from contextlib import asynccontextmanager
+from io import BytesIO
 from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
@@ -9,7 +10,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from src.models import Meeting, MeetingStatus, Recording, Transcript
-from src.routers.transcription import process_transcription
+from src.routers.transcription import process_imported_transcript, process_transcription
 from src.services.stt import STTError, TranscriptionResult, TranscriptSegment
 
 
@@ -475,3 +476,186 @@ class TestProcessTranscription:
         )
         rec = result.scalar_one()
         assert rec.duration_seconds == 120.0
+
+
+class TestImportTranscript:
+    """Tests for POST /meetings/{meeting_id}/import-transcript endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_not_found(self, client: AsyncClient):
+        response = await client.post(
+            "/api/v1/transcription/meetings/00000000-0000-0000-0000-000000000000/import-transcript",
+            files={"file": ("transcript.txt", b"hello", "text/plain")},
+        )
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_txt_file(self, client: AsyncClient, meeting_id: str):
+        response = await client.post(
+            f"/api/v1/transcription/meetings/{meeting_id}/import-transcript",
+            files={"file": ("transcript.mp3", b"audio content", "audio/mpeg")},
+        )
+        assert response.status_code == 400
+        assert ".txt" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_rejects_empty_file(self, client: AsyncClient, meeting_id: str):
+        response = await client.post(
+            f"/api/v1/transcription/meetings/{meeting_id}/import-transcript",
+            files={"file": ("transcript.txt", b"", "text/plain")},
+        )
+        assert response.status_code == 400
+        assert "empty" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_rejects_oversized_file(self, client: AsyncClient, meeting_id: str):
+        # Create content just over 5MB
+        large_content = b"a" * (5 * 1024 * 1024 + 1)
+        response = await client.post(
+            f"/api/v1/transcription/meetings/{meeting_id}/import-transcript",
+            files={"file": ("transcript.txt", large_content, "text/plain")},
+        )
+        assert response.status_code == 400
+        assert "size" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_rejects_when_recording_exists(
+        self, client: AsyncClient, meeting_with_recording: str
+    ):
+        """Audio recording and script import are mutually exclusive."""
+        response = await client.post(
+            f"/api/v1/transcription/meetings/{meeting_with_recording}/import-transcript",
+            files={"file": ("transcript.txt", b"hello world", "text/plain")},
+        )
+        assert response.status_code == 409
+        assert "recording" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_rejects_when_transcripts_exist(
+        self, client: AsyncClient, meeting_with_transcripts: str
+    ):
+        """Should reject if transcripts already exist (non-FAILED status)."""
+        response = await client.post(
+            f"/api/v1/transcription/meetings/{meeting_with_transcripts}/import-transcript",
+            files={"file": ("transcript.txt", b"hello world", "text/plain")},
+        )
+        assert response.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_success(self, client: AsyncClient, meeting_id: str):
+        """Should accept valid .txt file and return 202."""
+        content = "[이상윤] 안녕하세요.\n\n[선설희] 네, 안녕하세요."
+        with patch("src.routers.transcription.process_imported_transcript"):
+            response = await client.post(
+                f"/api/v1/transcription/meetings/{meeting_id}/import-transcript",
+                files={"file": ("transcript.txt", content.encode("utf-8"), "text/plain")},
+            )
+        assert response.status_code == 202
+        data = response.json()
+        assert data["status"] == "transcribing"
+        assert data["segments_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_success_with_chat_filter_disabled(self, client: AsyncClient, meeting_id: str):
+        """Should accept enable_chat_filter=false parameter."""
+        content = "테스트 텍스트입니다."
+        with patch("src.routers.transcription.process_imported_transcript"):
+            response = await client.post(
+                f"/api/v1/transcription/meetings/{meeting_id}/import-transcript",
+                files={"file": ("transcript.txt", content.encode("utf-8"), "text/plain")},
+                data={"enable_chat_filter": "false"},
+            )
+        assert response.status_code == 202
+
+
+class TestProcessImportedTranscript:
+    """Tests for the process_imported_transcript background task."""
+
+    @pytest.mark.asyncio
+    async def test_successful_import(
+        self, client: AsyncClient, meeting_id: str, db_session
+    ):
+        """Should parse text and store segments in DB."""
+        mid = UUID(meeting_id)
+        text = "[이상윤] 안녕하세요.\n\n[선설희] 네, 보고 드리겠습니다."
+
+        @asynccontextmanager
+        async def mock_session_factory():
+            yield db_session
+
+        with patch("src.routers.transcription.async_session_factory", mock_session_factory):
+            await process_imported_transcript(mid, text, enable_chat_filter=False)
+
+        # Verify meeting status
+        result = await db_session.execute(select(Meeting).where(Meeting.id == mid))
+        meeting = result.scalar_one()
+        assert meeting.status == MeetingStatus.TRANSCRIBED
+
+        # Verify transcript segments
+        transcript_result = await db_session.execute(
+            select(Transcript).where(Transcript.meeting_id == mid)
+        )
+        transcripts = list(transcript_result.scalars().all())
+        assert len(transcripts) == 2
+        assert transcripts[0].speaker_label == "이상윤"
+        assert transcripts[0].text == "안녕하세요."
+        assert transcripts[1].speaker_label == "선설희"
+
+    @pytest.mark.asyncio
+    async def test_meeting_not_found(self, db_session):
+        """Should return early if meeting not found."""
+        fake_id = UUID("00000000-0000-0000-0000-000000000099")
+
+        @asynccontextmanager
+        async def mock_session_factory():
+            yield db_session
+
+        with patch("src.routers.transcription.async_session_factory", mock_session_factory):
+            await process_imported_transcript(fake_id, "some text")
+
+    @pytest.mark.asyncio
+    async def test_sets_failed_on_error(
+        self, client: AsyncClient, meeting_id: str, db_session
+    ):
+        """Should set FAILED status on unexpected error."""
+        mid = UUID(meeting_id)
+
+        @asynccontextmanager
+        async def mock_session_factory():
+            yield db_session
+
+        with (
+            patch("src.routers.transcription.async_session_factory", mock_session_factory),
+            patch(
+                "src.routers.transcription.parse_transcript_text",
+                side_effect=RuntimeError("Parse error"),
+            ),
+        ):
+            await process_imported_transcript(mid, "some text")
+
+        result = await db_session.execute(select(Meeting).where(Meeting.id == mid))
+        meeting = result.scalar_one()
+        assert meeting.status == MeetingStatus.FAILED
+        assert "Transcript import failed" in meeting.error_message
+
+    @pytest.mark.asyncio
+    async def test_no_recording_created(
+        self, client: AsyncClient, meeting_id: str, db_session
+    ):
+        """Script import should NOT create a recording record."""
+        mid = UUID(meeting_id)
+        text = "테스트 텍스트입니다."
+
+        @asynccontextmanager
+        async def mock_session_factory():
+            yield db_session
+
+        with patch("src.routers.transcription.async_session_factory", mock_session_factory):
+            await process_imported_transcript(mid, text, enable_chat_filter=False)
+
+        # Verify no recording was created
+        result = await db_session.execute(
+            select(Recording).where(Recording.meeting_id == mid)
+        )
+        recording = result.scalar_one_or_none()
+        assert recording is None

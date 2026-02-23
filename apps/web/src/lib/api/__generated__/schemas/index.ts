@@ -7,6 +7,7 @@
  */
 
 export * from './agendaItem';
+export * from './bodyImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost';
 export * from './bodyUploadRecordingApiV1RecordingsMeetingsMeetingIdRecordingPost';
 export * from './confirmAllFilteredContentApiV1FiltersMeetingsMeetingIdFilteredConfirmAllPost200';
 export * from './confirmResponse';
@@ -29,6 +30,7 @@ export * from './healthResponse';
 export * from './healthResponseServices';
 export * from './healthResponseStatus';
 export * from './hTTPValidationError';
+export * from './importTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPostParams';
 export * from './listMeetingsApiV1MeetingsGetParams';
 export * from './listVocabularyApiV1TeamsTeamIdVocabularyGetParams';
 export * from './listWeeklyReportPagesApiV1WeeklyReportsConfluencePagesGetParams';

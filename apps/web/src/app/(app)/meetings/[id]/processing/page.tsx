@@ -12,7 +12,9 @@ import { useGetMeetingProgressApiV1MeetingsMeetingIdProgressGet } from "@/lib/ap
 import { useStartMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost } from "@/lib/api/__generated__/minutes/minutes";
 import { cn } from "@/lib/utils";
 
-const weeklySteps: { key: SttStep; label: string; description: string }[] = [
+type StepDef = { key: SttStep; label: string; description: string };
+
+const weeklySteps: StepDef[] = [
   { key: "voice", label: "음성 인식", description: "녹음 파일에서 음성을 텍스트로 변환 중" },
   {
     key: "terminology",
@@ -22,12 +24,31 @@ const weeklySteps: { key: SttStep; label: string; description: string }[] = [
   { key: "formatting", label: "문서 정리", description: "회의록 형식으로 구조화 중" },
 ];
 
-const generalSteps: { key: SttStep; label: string; description: string }[] = [
+const generalSteps: StepDef[] = [
   { key: "voice", label: "음성 인식", description: "녹음 파일에서 음성을 텍스트로 변환 중" },
   {
     key: "terminology",
     label: "내용 분류",
     description: "회의 내용과 잡담을 분류하는 중",
+  },
+  { key: "formatting", label: "문서 정리", description: "회의록 형식으로 구조화 중" },
+];
+
+// Steps for script import (no voice recognition needed)
+const weeklyScriptSteps: StepDef[] = [
+  {
+    key: "terminology",
+    label: "용어 교정",
+    description: "주간업무록을 참조하여 전문 용어 교정 중",
+  },
+  { key: "formatting", label: "문서 정리", description: "회의록 형식으로 구조화 중" },
+];
+
+const generalScriptSteps: StepDef[] = [
+  {
+    key: "terminology",
+    label: "내용 분류",
+    description: "스크립트 텍스트에서 내용을 분류하는 중",
   },
   { key: "formatting", label: "문서 정리", description: "회의록 형식으로 구조화 중" },
 ];
@@ -45,18 +66,6 @@ export default function ProcessingPage() {
   const { mutate: startMinutesGeneration } =
     useStartMinutesGenerationApiV1MinutesMeetingsMeetingIdGenerateMinutesPost();
 
-  // Initialize STT state on mount
-  useEffect(() => {
-    setStt({
-      status: "processing",
-      currentStep: "voice",
-      progress: 10,
-      segmentsCount: 0,
-      durationSeconds: null,
-      errorMessage: null,
-    });
-  }, [setStt]);
-
   // Use TanStack Query with refetchInterval for polling
   const { data: progressData } = useGetMeetingProgressApiV1MeetingsMeetingIdProgressGet(meetingId, {
     query: {
@@ -66,10 +75,28 @@ export default function ProcessingPage() {
   });
 
   const meetingType = (progressData?.meeting_type as string) ?? "weekly_report";
-  const steps = useMemo(
-    () => (meetingType === "general" ? generalSteps : weeklySteps),
-    [meetingType],
-  );
+  const hasRecording = (progressData?.has_recording as boolean | undefined) ?? true;
+  const isScriptImport = !hasRecording;
+
+  // Initialize STT state on mount and when script import status is known
+  useEffect(() => {
+    setStt({
+      status: "processing",
+      // For script import, start at terminology step (no voice step)
+      currentStep: isScriptImport ? "terminology" : "voice",
+      progress: isScriptImport ? 20 : 10,
+      segmentsCount: 0,
+      durationSeconds: null,
+      errorMessage: null,
+    });
+  }, [setStt, isScriptImport]);
+
+  const steps = useMemo(() => {
+    if (isScriptImport) {
+      return meetingType === "general" ? generalScriptSteps : weeklyScriptSteps;
+    }
+    return meetingType === "general" ? generalSteps : weeklySteps;
+  }, [meetingType, isScriptImport]);
 
   // Process progress data when it changes
   useEffect(() => {

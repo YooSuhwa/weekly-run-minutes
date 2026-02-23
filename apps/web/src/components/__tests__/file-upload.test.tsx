@@ -237,4 +237,53 @@ describe("FileUpload", () => {
       expect(onFileSelect).not.toHaveBeenCalled();
     });
   });
+
+  describe("text mode", () => {
+    it("renders text mode drop zone", () => {
+      render(<FileUpload {...defaultProps} mode="text" />);
+      expect(screen.getByText(/스크립트 텍스트 파일을 드래그하거나 클릭하세요/)).toBeDefined();
+    });
+
+    it("shows text mode format info", () => {
+      render(<FileUpload {...defaultProps} mode="text" />);
+      expect(screen.getByText(/TXT.*최대 5MB/)).toBeDefined();
+    });
+
+    it("passes text accept config to dropzone", () => {
+      let capturedOptions: any;
+      mockUseDropzone.mockImplementationOnce((options: any) => {
+        capturedOptions = options;
+        return {
+          getRootProps: () => ({}),
+          getInputProps: () => ({ type: "file" }),
+          isDragActive: false,
+          fileRejections: [],
+        };
+      });
+
+      render(<FileUpload {...defaultProps} mode="text" />);
+      expect(capturedOptions.accept).toEqual({ "text/plain": [".txt"] });
+      expect(capturedOptions.maxSize).toBe(5 * 1024 * 1024);
+    });
+
+    it("shows text mode too-large error", () => {
+      mockUseDropzone.mockImplementationOnce(() => ({
+        getRootProps: () => ({}),
+        getInputProps: () => ({ type: "file" }),
+        isDragActive: false,
+        fileRejections: [{ errors: [{ code: "file-too-large", message: "" }] }],
+      }));
+
+      render(<FileUpload {...defaultProps} mode="text" />);
+      expect(screen.getByText("파일 크기가 5MB를 초과합니다")).toBeDefined();
+    });
+
+    it("shows file name in text mode when file is selected", () => {
+      const file = new File(["transcript"], "meeting-script.txt", {
+        type: "text/plain",
+      });
+      render(<FileUpload {...defaultProps} file={file} mode="text" />);
+      expect(screen.getByText("meeting-script.txt")).toBeDefined();
+    });
+  });
 });

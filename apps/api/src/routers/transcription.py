@@ -3,7 +3,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,9 +12,10 @@ from sqlalchemy.orm import selectinload
 from src.lib.database import async_session_factory
 from src.lib.dependencies import get_db
 from src.lib.logging import get_logger
-from src.models import FilteredContent, Meeting, MeetingStatus, MeetingType, Transcript
+from src.models import FilteredContent, Meeting, MeetingStatus, MeetingType, Recording, Transcript
 from src.services.chat_filter import ChatFilterError, ChatFilterService, TranscriptSegment
 from src.services.stt import STTError, STTService
+from src.services.transcript_parser import decode_transcript_file, parse_transcript_text
 from src.services.weekly_report_parser import WeeklyReportParser
 
 logger = get_logger(__name__)
@@ -420,4 +421,184 @@ async def get_meeting_transcript_text(
         "meeting_id": str(meeting_id),
         "segments_count": len(transcripts),
         "text": "\n".join(lines),
+    }
+
+
+MAX_TRANSCRIPT_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+
+
+async def process_imported_transcript(
+    meeting_id: UUID, text: str, enable_chat_filter: bool = True
+) -> None:
+    """Background task to process an imported transcript text.
+
+    Parses the text into segments, stores them, optionally runs chat filtering,
+    and transitions the meeting directly to TRANSCRIBED (skipping STT).
+
+    Args:
+        meeting_id: Meeting UUID
+        text: Raw transcript text content
+        enable_chat_filter: Whether to run chat filtering (default: True)
+    """
+    async with async_session_factory() as db:
+        try:
+            result = await db.execute(
+                select(Meeting)
+                .where(Meeting.id == meeting_id)
+                .options(selectinload(Meeting.weekly_report))
+            )
+            meeting = result.scalar_one_or_none()
+
+            if not meeting:
+                logger.error(
+                    "Meeting not found for transcript import", meeting_id=str(meeting_id)
+                )
+                return
+
+            # Update status to transcribing
+            meeting.status = MeetingStatus.TRANSCRIBING
+            await db.commit()
+
+            # Parse text into segments
+            parsed_segments = parse_transcript_text(text)
+
+            # Store transcript segments
+            stored_transcripts: list[Transcript] = []
+            for segment in parsed_segments:
+                transcript = Transcript(
+                    meeting_id=meeting_id,
+                    start_time=segment.start_time,
+                    end_time=segment.end_time,
+                    text=segment.text,
+                    speaker_label=segment.speaker_label,
+                    confidence=None,
+                )
+                db.add(transcript)
+                stored_transcripts.append(transcript)
+
+            # Flush to get IDs for filtering
+            await db.flush()
+
+            # Run chat filtering if enabled
+            if enable_chat_filter and stored_transcripts:
+                await _run_chat_filter(db, meeting, stored_transcripts)
+
+            # Transition directly to TRANSCRIBED (no STT needed)
+            meeting.status = MeetingStatus.TRANSCRIBED
+            await db.commit()
+
+            logger.info(
+                "Transcript import completed",
+                meeting_id=str(meeting_id),
+                segments=len(parsed_segments),
+            )
+
+        except Exception as e:
+            logger.exception("Error processing imported transcript", meeting_id=str(meeting_id))
+            meeting.status = MeetingStatus.FAILED
+            meeting.error_message = f"Transcript import failed: {e}"
+            await db.commit()
+
+
+@router.post(
+    "/meetings/{meeting_id}/import-transcript",
+    response_model=TranscriptionStatusResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def import_transcript(
+    meeting_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: DB,
+    file: UploadFile = File(...),
+    enable_chat_filter: bool = True,
+) -> dict:
+    """Import a pre-transcribed text file (.txt) for a meeting.
+
+    Skips the STT step and directly processes the text into transcript segments.
+    The text file is parsed for optional speaker labels and stored as transcript records.
+
+    Args:
+        meeting_id: Meeting UUID
+        file: .txt file (max 5MB)
+        enable_chat_filter: Whether to run chat filtering (default: True)
+    """
+    # Validate meeting exists
+    result = await db.execute(
+        select(Meeting)
+        .where(Meeting.id == meeting_id)
+        .options(
+            selectinload(Meeting.recording),
+            selectinload(Meeting.transcripts),
+        )
+    )
+    meeting = result.scalar_one_or_none()
+
+    if not meeting:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Meeting not found",
+        )
+
+    # Audio recording and script import are mutually exclusive
+    if meeting.recording:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Meeting already has a recording. Audio and script import are mutually exclusive.",
+        )
+
+    # Check for existing transcripts (allow retry if FAILED)
+    status_val = (
+        meeting.status.value if isinstance(meeting.status, MeetingStatus) else meeting.status
+    )
+    if meeting.transcripts and status_val != "failed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Meeting already has transcripts. Delete existing transcripts before re-importing.",
+        )
+
+    if status_val == "transcribing":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Transcription already in progress",
+        )
+
+    # Validate file
+    if not file.filename or not file.filename.lower().endswith(".txt"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only .txt files are supported",
+        )
+
+    content = await file.read()
+
+    if len(content) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File is empty",
+        )
+
+    if len(content) > MAX_TRANSCRIPT_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File exceeds maximum size of {MAX_TRANSCRIPT_FILE_SIZE // (1024 * 1024)}MB",
+        )
+
+    # Decode file content
+    try:
+        text = decode_transcript_file(content)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    # Start background processing
+    background_tasks.add_task(process_imported_transcript, meeting_id, text, enable_chat_filter)
+
+    return {
+        "meeting_id": meeting_id,
+        "status": "transcribing",
+        "segments_count": 0,
+        "duration_seconds": None,
+        "error_message": None,
     }

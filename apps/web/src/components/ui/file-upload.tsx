@@ -1,6 +1,6 @@
 "use client";
 
-import { Upload, X } from "lucide-react";
+import { FileText, Upload, X } from "lucide-react";
 import { useCallback } from "react";
 import { type Accept, useDropzone } from "react-dropzone";
 import { cn, formatFileSize } from "@/lib/utils";
@@ -16,7 +16,12 @@ const AUDIO_ACCEPT: Accept = {
   "audio/flac": [".flac"],
 };
 
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+const TEXT_ACCEPT: Accept = {
+  "text/plain": [".txt"],
+};
+
+const MAX_AUDIO_SIZE = 100 * 1024 * 1024; // 100MB
+const MAX_TEXT_SIZE = 5 * 1024 * 1024; // 5MB
 
 interface FileUploadProps {
   file: File | null;
@@ -24,7 +29,27 @@ interface FileUploadProps {
   onFileRemove: () => void;
   disabled?: boolean;
   className?: string;
+  mode?: "audio" | "text";
 }
+
+const MODE_CONFIG = {
+  audio: {
+    accept: AUDIO_ACCEPT,
+    maxSize: MAX_AUDIO_SIZE,
+    Icon: Upload,
+    dropText: "녹음 파일을 드래그하거나 클릭하세요",
+    formatText: "MP3, WAV, WebM, M4A, OGG, AAC, FLAC (최대 100MB)",
+    tooLargeText: "파일 크기가 100MB를 초과합니다",
+  },
+  text: {
+    accept: TEXT_ACCEPT,
+    maxSize: MAX_TEXT_SIZE,
+    Icon: FileText,
+    dropText: "스크립트 텍스트 파일을 드래그하거나 클릭하세요",
+    formatText: "TXT (최대 5MB)",
+    tooLargeText: "파일 크기가 5MB를 초과합니다",
+  },
+} as const;
 
 export function FileUpload({
   file,
@@ -32,7 +57,11 @@ export function FileUpload({
   onFileRemove,
   disabled,
   className,
+  mode = "audio",
 }: FileUploadProps) {
+  const config = MODE_CONFIG[mode];
+  const { Icon } = config;
+
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
       if (acceptedFiles.length > 0) {
@@ -44,8 +73,8 @@ export function FileUpload({
 
   const { getRootProps, getInputProps, isDragActive, fileRejections } = useDropzone({
     onDrop,
-    accept: AUDIO_ACCEPT,
-    maxSize: MAX_FILE_SIZE,
+    accept: config.accept,
+    maxSize: config.maxSize,
     maxFiles: 1,
     disabled,
   });
@@ -53,7 +82,7 @@ export function FileUpload({
   const rejectionMessage =
     fileRejections.length > 0
       ? fileRejections[0].errors[0].code === "file-too-large"
-        ? "파일 크기가 100MB를 초과합니다"
+        ? config.tooLargeText
         : "지원하지 않는 파일 형식입니다"
       : null;
 
@@ -63,7 +92,7 @@ export function FileUpload({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-              <Upload className="h-5 w-5 text-primary" />
+              <Icon className="h-5 w-5 text-primary" />
             </div>
             <div>
               <p className="text-sm font-medium">{file.name}</p>
@@ -91,13 +120,11 @@ export function FileUpload({
         )}
       >
         <input {...getInputProps()} />
-        <Upload className="mb-3 h-8 w-8 text-muted-foreground" />
+        <Icon className="mb-3 h-8 w-8 text-muted-foreground" />
         <p className="mb-1 text-sm font-medium">
-          {isDragActive ? "여기에 놓으세요" : "녹음 파일을 드래그하거나 클릭하세요"}
+          {isDragActive ? "여기에 놓으세요" : config.dropText}
         </p>
-        <p className="text-xs text-muted-foreground">
-          MP3, WAV, WebM, M4A, OGG, AAC, FLAC (최대 100MB)
-        </p>
+        <p className="text-xs text-muted-foreground">{config.formatText}</p>
       </div>
       {rejectionMessage && <p className="mt-2 text-xs text-destructive">{rejectionMessage}</p>}
     </div>

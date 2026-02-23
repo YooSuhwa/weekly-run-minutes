@@ -11,6 +11,7 @@ const {
   mockLoadWeeklyReportMutate,
   mockUploadRecordingMutate,
   mockStartTranscriptionMutate,
+  mockImportTranscriptMutate,
   mockRouterPush,
   mockToastSuccess,
   mockToastError,
@@ -28,6 +29,7 @@ const {
   mockLoadWeeklyReportMutate: vi.fn(),
   mockUploadRecordingMutate: vi.fn(),
   mockStartTranscriptionMutate: vi.fn(),
+  mockImportTranscriptMutate: vi.fn(),
   mockRouterPush: vi.fn(),
   mockToastSuccess: vi.fn(),
   mockToastError: vi.fn(),
@@ -103,6 +105,13 @@ vi.mock("@/lib/api/__generated__/recordings/recordings", () => ({
   },
 }));
 
+// Track import transcript callbacks
+let importTranscriptCallbacks: {
+  onSuccess?: () => void;
+  onError?: () => void;
+  onSettled?: () => void;
+} = {};
+
 // Mock transcription API
 vi.mock("@/lib/api/__generated__/transcription/transcription", () => ({
   useStartTranscriptionApiV1TranscriptionMeetingsMeetingIdTranscribePost: (config: {
@@ -111,6 +120,14 @@ vi.mock("@/lib/api/__generated__/transcription/transcription", () => ({
     startTranscriptionCallbacks = config?.mutation ?? {};
     return {
       mutate: mockStartTranscriptionMutate,
+    };
+  },
+  useImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost: (config: {
+    mutation?: { onSuccess?: () => void; onError?: () => void; onSettled?: () => void };
+  }) => {
+    importTranscriptCallbacks = config?.mutation ?? {};
+    return {
+      mutate: mockImportTranscriptMutate,
     };
   },
 }));
@@ -122,13 +139,15 @@ vi.mock("@/components/ui/file-upload", () => ({
     onFileSelect,
     onFileRemove,
     disabled,
+    mode,
   }: {
     file: File | null;
     onFileSelect: (file: File) => void;
     onFileRemove: () => void;
     disabled?: boolean;
+    mode?: "audio" | "text";
   }) => (
-    <div data-testid="file-upload">
+    <div data-testid={mode === "text" ? "file-upload-text" : "file-upload"}>
       {file ? (
         <div data-testid="file-selected">
           <span data-testid="file-name">{file.name}</span>
@@ -144,7 +163,13 @@ vi.mock("@/components/ui/file-upload", () => ({
       ) : (
         <button
           type="button"
-          onClick={() => onFileSelect(new File(["test"], "test.mp3", { type: "audio/mpeg" }))}
+          onClick={() =>
+            onFileSelect(
+              mode === "text"
+                ? new File(["transcript"], "test.txt", { type: "text/plain" })
+                : new File(["test"], "test.mp3", { type: "audio/mpeg" }),
+            )
+          }
           disabled={disabled}
           data-testid="select-file-btn"
         >
@@ -253,7 +278,7 @@ describe("MeetingSetupPage", () => {
 
     it("renders file upload section", () => {
       renderWithProviders(<MeetingSetupPage />);
-      expect(screen.getByText("녹음 파일")).toBeInTheDocument();
+      expect(screen.getAllByText("녹음 파일").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByTestId("file-upload")).toBeInTheDocument();
     });
 

@@ -1832,6 +1832,70 @@
         }
       }
     },
+    "/api/v1/transcription/meetings/{meeting_id}/import-transcript": {
+      "post": {
+        "tags": [
+          "transcription"
+        ],
+        "summary": "Import Transcript",
+        "description": "Import a pre-transcribed text file (.txt) for a meeting.\n\nSkips the STT step and directly processes the text into transcript segments.\nThe text file is parsed for optional speaker labels and stored as transcript records.\n\nArgs:\n    meeting_id: Meeting UUID\n    file: .txt file (max 5MB)\n    enable_chat_filter: Whether to run chat filtering (default: True)",
+        "operationId": "import_transcript_api_v1_transcription_meetings__meeting_id__import_transcript_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meeting Id"
+            }
+          },
+          {
+            "name": "enable_chat_filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Enable Chat Filter"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_transcript_api_v1_transcription_meetings__meeting_id__import_transcript_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptionStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/minutes/meetings/{meeting_id}/generate-minutes": {
       "post": {
         "tags": [
@@ -2882,6 +2946,20 @@
         ],
         "title": "AgendaItem",
         "description": "Schema for a single agenda item in general meetings."
+      },
+      "Body_import_transcript_api_v1_transcription_meetings__meeting_id__import_transcript_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_transcript_api_v1_transcription_meetings__meeting_id__import_transcript_post"
       },
       "Body_upload_recording_api_v1_recordings_meetings__meeting_id__recording_post": {
         "properties": {

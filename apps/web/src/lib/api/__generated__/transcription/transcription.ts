@@ -25,9 +25,11 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  BodyImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost,
   GetMeetingTranscriptTextApiV1TranscriptionMeetingsMeetingIdTranscriptsTextGet200,
   GetMeetingTranscriptTextApiV1TranscriptionMeetingsMeetingIdTranscriptsTextGetParams,
   HTTPValidationError,
+  ImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPostParams,
   TranscriptSegmentResponse,
   TranscriptionRequest,
   TranscriptionStatusResponse
@@ -305,3 +307,81 @@ export function useGetMeetingTranscriptTextApiV1TranscriptionMeetingsMeetingIdTr
 
 
 
+/**
+ * Import a pre-transcribed text file (.txt) for a meeting.
+
+Skips the STT step and directly processes the text into transcript segments.
+The text file is parsed for optional speaker labels and stored as transcript records.
+
+Args:
+    meeting_id: Meeting UUID
+    file: .txt file (max 5MB)
+    enable_chat_filter: Whether to run chat filtering (default: True)
+ * @summary Import Transcript
+ */
+export const importTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost = (
+    meetingId: string,
+    bodyImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost: BodyImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost,
+    params?: ImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPostParams,
+ signal?: AbortSignal
+) => {
+      
+      const formData = new FormData();
+formData.append(`file`, bodyImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost.file);
+
+      return apiClient<TranscriptionStatusResponse>(
+      {url: `/api/v1/transcription/meetings/${meetingId}/import-transcript`, method: 'POST',
+      headers: {'Content-Type': 'multipart/form-data', },
+       data: formData,
+        params, signal
+    },
+      );
+    }
+  
+
+
+export const getImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPostMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost>>, TError,{meetingId: string;data: BodyImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost;params?: ImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPostParams}, TContext>, }
+): UseMutationOptions<Awaited<ReturnType<typeof importTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost>>, TError,{meetingId: string;data: BodyImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost;params?: ImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPostParams}, TContext> => {
+
+const mutationKey = ['importTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost'];
+const {mutation: mutationOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost>>, {meetingId: string;data: BodyImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost;params?: ImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPostParams}> = (props) => {
+          const {meetingId,data,params} = props ?? {};
+
+          return  importTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost(meetingId,data,params,)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPostMutationResult = NonNullable<Awaited<ReturnType<typeof importTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost>>>
+    export type ImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPostMutationBody = BodyImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost
+    export type ImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPostMutationError = HTTPValidationError
+
+    /**
+ * @summary Import Transcript
+ */
+export const useImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost>>, TError,{meetingId: string;data: BodyImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost;params?: ImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPostParams}, TContext>, }
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof importTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost>>,
+        TError,
+        {meetingId: string;data: BodyImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPost;params?: ImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPostParams},
+        TContext
+      > => {
+      return useMutation(getImportTranscriptApiV1TranscriptionMeetingsMeetingIdImportTranscriptPostMutationOptions(options), queryClient);
+    }
+    
